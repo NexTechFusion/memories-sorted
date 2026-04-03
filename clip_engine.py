@@ -1,0 +1,100 @@
+import torch
+import open_clip
+import numpy as np
+from typing import List
+from PIL import Image
+import os
+
+class ClipSearchEngine:
+    """
+    OpenCLIP semantic search engine optimized for CPU.
+    Uses RN50x4 model -- best CPU speed/accuracy ratio.
+    Pre-computes image embeddings at ingest; encodes text at query time.
+    """
+    
+    def __init__(self, model_name: str = "RN50x4", pretrained: str = "openai", device: str = "cpu", autoload_path: str = None):
+        self.device = device
+        self.model, _, self.preprocess = open_clip.create_model_and_transforms(
+            model_name, pretrained=pretrained, device=device
+        )
+        self.tokenizer = open_clip.get_tokenizer(model_name)
+        self.model.eval()
+        
+        # Cache for image embeddings: file_path -> numpy array
+        self._image_embeddings: dict = {}
+        self._dirty = False
+        # Preload existing embeddings if path given
+        if autoload_path and os.path.exists(autoload_path):
+            self.load_embeddings(autoload_path)
+        print(f"[CLIP] Initialized {model_name} on {device}")
+    
+    def encode_image(self, image) -> np.ndarray:
+        """Encode a PIL Image or file path into a 1024-d vector."""
+        if isinstance(image, str):
+            img = Image.open(image).convert("RGB")
+            img = self.preprocess(img).unsqueeze(0)
+        elif isinstance(image, Image.Image):
+            img = self.preprocess(image).unsqueeze(0)
+        else:
+            img = image
+        
+        with torch.no_grad():
+            features = self.model.encode_image(img)
+            features = features / features.norm(p=2, dim=-1, keepdim=True)
+            result = features.cpu().numpy()[0]
+        return result
+    
+    def encode_text(self, text: str) -> np.ndarray:
+        """Encode text query into a 1024-d vector (<100ms on CPU)."""
+        with torch.no_grad():
+            text_tokens = self.tokenizer([text])
+            text_features = self.model.encode_text(text_tokens)
+            text_features = text_features / text_features.norm(p=2, dim=-1, keepdim=True)
+            return text_features.cpu().numpy()[0]
+    
+    def save_embeddings(self, path: str):
+        """Persist image embeddings to disk."""
+        np.savez_compressed(path, **self._image_embeddings)
+        self._dirty = False
+        print(f"[CLIP] Saved {len(self._image_embeddings)} embeddings to {path}")
+    
+    def load_embeddings(self, path: str):
+        """Load image embeddings from disk."""
+        if os.path.exists(path):
+            data = np.load(path, allow_pickle=True)
+            self._image_embeddings = {k: data[k] for k in data.files}
+        print(f"[CLIP] Loaded {len(self._image_embeddings)} embeddings from {path}")
+    
+    def search(self, query: str, top_k: int = 20) -> List[tuple]:
+        """Search all cached image embeddings against a text query.
+        Returns [(file_path, similarity_score), ...] sorted by score.
+        """
+        if not self._image_embeddings:
+            return []
+        
+        text_vec = self.encode_text(query)
+        
+        file_paths = list(self._image_embeddings.keys())
+        image_matrix = np.stack([self._image_embeddings[k] for k in file_paths])
+        
+        similarities = image_matrix @ text_vec
+        
+        top_indices = np.argsort(similarities)[::-1][:top_k]
+        
+        results = []
+        for idx in top_indices:
+            if similarities[idx] > 0:  # Only return positive matches
+                results.append((file_paths[idx], float(similarities[idx])))
+        
+        return results
+    
+    def ensure_embedding(self, file_path: str) -> np.ndarray:
+        """Encode and cache if not already present."""
+        if file_path not in self._image_embeddings:
+            try:
+                self._image_embeddings[file_path] = self.encode_image(file_path)
+                self._dirty = True
+            except Exception as e:
+                print(f"[CLIP] Failed to encode {file_path}: {e}")
+                return None
+        return self._image_embeddings[file_path]

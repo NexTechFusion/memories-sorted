@@ -1,0 +1,7 @@
+data/
+clip_vectors.npz
+*.npz
+__pycache__/
+*.log
+.DS_Store
+venv/

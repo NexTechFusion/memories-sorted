@@ -1,0 +1,26 @@
+[
+  {
+    "type": "stories",
+    "title": "Recent Snapshots",
+    "message": "\u2022 a little boy sitting on a bike\n\u2022 a man is taking a picture of a child in a mirror\n\u2022 a man holding a small child in his arms",
+    "icon": "\ud83d\udcdd"
+  },
+  {
+    "type": "status",
+    "title": "Last Memory Captured",
+    "message": "Your last photo was uploaded 13 hours ago.\nYou have 22 photos in your library.",
+    "icon": "\ud83d\udcf8"
+  },
+  {
+    "type": "favorite",
+    "title": "Most Photographed",
+    "message": "Baby appears in 15 face detections.\n\nTop people: Baby: 15, Dom: 6, Person 63E68B81: 2, Person 3E0620D9: 1, Person 1EE488FA: 1",
+    "icon": "\ud83c\udfc6"
+  },
+  {
+    "type": "stat",
+    "title": "Your World in Numbers",
+    "message": "20 unique faces. 22 photos captured.",
+    "icon": "\ud83c\udf0d"
+  }
+]

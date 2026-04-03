@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Memories AI</title>
+    <script src="https://cdn.tailwindcss.com?_v=2"></script>
+    <script src="https://unpkg.com/alpinejs@3.x.x" defer></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        [x-cloak] { display: none !important; }
+        .scrollbar-none::-webkit-scrollbar { display: none; }
+        .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
+        @keyframes toastUp { from { transform: translate(-50%, 20px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+        .toast-anim { animation: toastUp .3s ease-out; }
+        .bento-card { background: rgba(24, 24, 27, 0.4); border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(12px); }
+    </style>
+</head>
+<body x-data="app()" x-init="init()" class="bg-[#09090b] text-white font-sans antialiased overflow-x-hidden">
+
+    <!-- Onboarding Flow -->
+    <div x-show="showOnboarding" x-cloak class="fixed inset-0 z-[500] bg-black/90 backdrop-blur-2xl flex items-center justify-center p-6 text-center">
+        <div class="max-w-sm w-full animate-in zoom-in-95 duration-300">
+            <template x-if="onboardingStep === 1">
+                <div>
+                    <div class="w-24 h-24 bg-blue-500/20 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-blue-500/20">
+                        <i data-lucide="sparkles" class="w-12 h-12 text-blue-400"></i>
+                    </div>
+                    <h2 class="text-3xl font-black mb-4">Welcome to Zaiya</h2>
+                    <p class="text-zinc-400 leading-relaxed mb-10">Your memories, understood and organized by local AI. Privacy first, always.</p>
+                    <button @click="onboardingStep = 2" class="w-full py-4 bg-blue-500 text-white font-bold rounded-2xl shadow-xl shadow-blue-500/20 active:scale-95 transition-all">Next</button>
+                </div>
+            </template>
+            <template x-if="onboardingStep === 2">
+                <div>
+                    <div class="w-24 h-24 bg-purple-500/20 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-purple-500/20">
+                        <i data-lucide="brain-circuit" class="w-12 h-12 text-purple-400"></i>
+                    </div>
+                    <h2 class="text-3xl font-black mb-4">AI Magic</h2>
+                    <p class="text-zinc-400 leading-relaxed mb-10">Zaiya scans your photos to recognize faces, generate captions, and group moments automatically.</p>
+                    <button @click="onboardingStep = 3" class="w-full py-4 bg-purple-500 text-white font-bold rounded-2xl shadow-xl shadow-purple-500/20 active:scale-95 transition-all">Tell me more</button>
+                </div>
+            </template>
+            <template x-if="onboardingStep === 3">
+                <div>
+                    <div class="w-24 h-24 bg-green-500/20 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-green-500/20">
+                        <i data-lucide="shield-check" class="w-12 h-12 text-green-400"></i>
+                    </div>
+                    <h2 class="text-3xl font-black mb-4">Local & Private</h2>
+                    <p class="text-zinc-400 leading-relaxed mb-10">No cloud. No tracking. Everything stays on your machine. Your data is yours.</p>
+                    <button @click="completeOnboarding()" class="w-full py-4 bg-green-500 text-white font-bold rounded-2xl shadow-xl shadow-green-500/20 active:scale-95 transition-all">Get Started</button>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <!-- Toast Component -->
+    <div x-show="toast.show" x-transition.duration.300ms 
+         class="fixed top-16 left-1/2 -translate-x-1/2 z-[9999] px-6 py-3 rounded-full text-sm font-semibold toast-anim shadow-2xl border border-white/10"
+         :class="toast.type==='error'?'bg-red-500/90':'bg-zinc-800/90'" x-text="toast.text"></div>
+
+    <!-- Upload Progress Bento -->
+    <div x-show="uploading" x-cloak x-transition.opacity class="fixed bottom-24 left-4 right-4 z-[90]">
+        <div class="bento-card rounded-2xl p-4 shadow-2xl flex items-center gap-4 border-blue-500/20">
+            <div class="w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center relative overflow-hidden">
+                <template x-if="uploadPreview">
+                    <img :src="uploadPreview" class="absolute inset-0 w-full h-full object-cover rounded-full opacity-50">
+                </template>
+                <i data-lucide="upload-cloud" class="w-5 h-5 text-blue-400 animate-pulse relative z-10" x-show="uploadStatus === 'uploading'"></i>
+                <i data-lucide="cpu" class="w-5 h-5 text-purple-400 animate-spin relative z-10" x-show="uploadStatus !== 'uploading' && uploadStatus !== 'done' && uploadStatus !== 'error'"></i>
+                <i data-lucide="check" class="w-5 h-5 text-green-400 relative z-10" x-show="uploadStatus === 'done'"></i>
+                <i data-lucide="alert-circle" class="w-5 h-5 text-red-400 relative z-10" x-show="uploadStatus === 'error'"></i>
+            </div>
+            <div class="flex-1">
+                <div class="flex justify-between items-center mb-1">
+                    <p class="text-[10px] text-zinc-500 uppercase tracking-widest font-bold" 
+                       x-text="getProcessLabel()"></p>
+                    <p class="text-[10px] font-bold text-zinc-400" x-show="uploadStatus === 'uploading'" x-text="uploadProgress + '%'"></p>
+                </div>
+                <div class="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
+                    <div class="bg-blue-500 h-full transition-all duration-300" 
+                         :class="uploadStatus !== 'uploading' ? 'bg-purple-500 animate-pulse' : ''"
+                         :style="'width:' + (uploadStatus === 'uploading' ? uploadProgress : 100) + '%'"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Navigation Content -->
+    <main class="pb-32 min-h-screen">
+        
+        <!-- Tab: Discover -->
+        <div x-show="tab === 'discover'" x-cloak class="p-6 max-w-2xl mx-auto">
+            <header class="mb-8 pt-4">
+                <h1 class="text-4xl font-black tracking-tight mb-2">Discover</h1>
+                <p class="text-zinc-500 font-medium">Sorted by face. Understood by AI.</p>
+            </header>
+
+            <!-- Empty State -->
+            <template x-if="allPhotos.length === 0">
+                <div class="flex flex-col items-center justify-center py-20 text-center">
+                    <div class="w-20 h-20 bg-zinc-900 rounded-full flex items-center justify-center mb-4 border border-white/5">
+                        <i data-lucide="image" class="w-10 h-10 text-zinc-700"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-zinc-300">No Memories Yet</h3>
+                    <p class="text-zinc-500 max-w-xs mx-auto mt-2">Upload your first photos to let the AI organize your world.</p>
+                </div>
+            </template>
+
+            <!-- AI Insights Carousel -->
+            <div x-show="insights.length > 0" class="flex gap-4 overflow-x-auto pb-8 -mx-6 px-6 scrollbar-none">
+                <template x-for="insight in insights" :key="insight.type">
+                    <div class="bento-card p-5 rounded-3xl min-w-[300px] max-w-[300px] flex flex-col justify-between border-blue-500/5 transition-all hover:border-blue-500/20">
+                        <div>
+                            <div class="flex items-center gap-3 mb-4">
+                                <div class="w-10 h-10 rounded-2xl bg-blue-500/10 flex items-center justify-center text-xl" x-text="insight.icon"></div>
+                                <h3 class="font-bold text-zinc-300" x-text="insight.title"></h3>
+                            </div>
+                            <p class="text-sm text-zinc-400 leading-relaxed whitespace-pre-line" x-text="insight.message"></p>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
+            <section x-show="people.length > 0" class="mb-8">
+                <h2 class="text-lg font-bold mb-4 flex items-center gap-2">
+                    <i data-lucide="users" class="w-5 h-5 text-blue-500"></i> Your People
+                </h2>
+                <div class="flex gap-4 overflow-x-auto pb-4 -mx-6 px-6 scrollbar-none">
+                    <template x-for="p in people.slice(0, 10)" :key="p.id">
+                        <button @click="openPerson(p)" class="flex-shrink-0 group">
+                            <div class="w-16 h-16 rounded-2xl overflow-hidden mb-2 bento-card relative">
+                                <img :src="getAvatarSrc(p)"
+                                     :style="getPersonStyle(p)"
+                                     class="w-full h-full object-cover">
+                                <div class="absolute inset-x-0 bottom-0 bg-black/40 h-1/3 flex items-end justify-center pb-0.5">
+                                    <span class="text-[8px] font-bold uppercase" x-text="p.count"></span>
+                                </div>
+                            </div>
+                            <p class="text-[10px] font-bold text-center text-zinc-400 truncate w-16" x-text="p.display || 'User'"></p>
+                        </button>
+                    </template>
+                </div>
+            </section>
+
+            <section x-show="allPhotos.length > 0">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-bold flex items-center gap-2">
+                        <i data-lucide="image" class="w-5 h-5 text-purple-500"></i> Recent Memories
+                    </h2>
+                    <button x-show="!selectionMode" @click="selectionMode = true" class="text-xs font-bold text-blue-500 uppercase tracking-widest bg-blue-500/10 px-3 py-1.5 rounded-lg active:scale-95 transition-all">Select</button>
+                    <button x-show="selectionMode" @click="exitSelection()" class="text-xs font-bold text-zinc-500 uppercase tracking-widest bg-white/5 px-3 py-1.5 rounded-lg active:scale-95 transition-all">Cancel</button>
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                    <template x-for="(p, i) in allPhotos.slice(0, 24)" :key="p.file_path">
+                        <div @click="selectionMode ? toggleSelection(p.file_path) : openLightbox(i, allPhotos)" 
+                             class="aspect-square rounded-xl overflow-hidden bento-card active:scale-95 transition-all relative border-2"
+                             :class="selectedItems.includes(p.file_path) ? 'border-blue-500 scale-95' : 'border-transparent'">
+                            <img :src="'/images/' + p.file_path.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover">
+                            <div x-show="selectionMode && selectedItems.includes(p.file_path)" class="absolute top-1.5 right-1.5 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center shadow-lg">
+                                <i data-lucide="check" class="w-3.5 h-3.5 text-white"></i>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </section>
+        </div>
+
+        <!-- Tab: Moments -->
+        <div x-show="tab === 'moments'" x-cloak class="p-6 max-w-2xl mx-auto">
+            <div class="flex items-center justify-between mb-8 pt-4">
+                <h1 class="text-4xl font-black tracking-tight">Moments</h1>
+                <div class="flex gap-2">
+                    <button @click="confirmAction('Regenerate moments from scratch?', 'regenerateMoments')" class="bg-white/5 p-3 rounded-2xl border border-white/5 active:scale-90 transition-all">
+                        <i data-lucide="refresh-cw" class="w-5 h-5 text-zinc-400"></i>
+                    </button>
+                    <button @click="addMomentOpen = true" class="bg-blue-500 text-white p-3 rounded-2xl shadow-lg shadow-blue-500/20 active:scale-90 transition-all">
+                        <i data-lucide="plus" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Empty State for Moments -->
+            <template x-if="moments.length === 0">
+                <div class="flex flex-col items-center justify-center py-20 text-center">
+                    <div class="w-20 h-20 bg-zinc-900 rounded-full flex items-center justify-center mb-4 border border-white/5">
+                        <i data-lucide="layers" class="w-10 h-10 text-zinc-700"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-zinc-300">No AI Moments</h3>
+                    <p class="text-zinc-500 max-w-xs mx-auto mt-2">Upload more photos to let the engine group your memories into stories.</p>
+                </div>
+            </template>
+
+            <div class="grid grid-cols-1 gap-4">
+                <template x-for="m in moments" :key="m.id">
+                    <div class="bento-card rounded-3xl overflow-hidden relative group active:scale-[0.98] transition-all duration-300"
+                         @contextmenu.prevent="openMomentMenu(m, $event)">
+                        <div @click="openMomentGallery(m)" class="cursor-pointer">
+                            <div class="aspect-[16/9] w-full relative">
+                                <img :src="m.cover_image ? '/images/' + m.cover_image.replace('/root/memories-sorted/data/input/', '') : ''" class="w-full h-full object-cover">
+                                <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
+                                <div class="absolute bottom-4 left-5 right-5">
+                                    <h3 class="text-2xl font-bold text-white" x-text="m.label"></h3>
+                                    <p class="text-xs text-white/60 font-medium" x-text="m.count + ' photos • ' + (new Date(m.timestamp*1000).toLocaleDateString())"></p>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- UI Polish: Visible Trigger for Mobile -->
+                        <button @click.stop="openMomentMenu(m, $event)" class="absolute top-4 right-4 w-10 h-10 rounded-full bg-black/50 backdrop-blur-md flex items-center justify-center lg:opacity-0 group-hover:opacity-100 transition-opacity border border-white/10">
+                            <i data-lucide="more-vertical" class="w-5 h-5 text-white"></i>
+                        </button>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Tab: People -->
+        <div x-show="tab === 'people'" x-cloak class="p-6 max-w-2xl mx-auto">
+            <div class="mb-8 pt-4">
+                <h1 class="text-4xl font-black tracking-tight mb-4">People</h1>
+                <div class="relative">
+                    <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500"></i>
+                    <input x-model="searchQuery" type="text" placeholder="Search people..." class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <template x-for="p in filteredPeople" :key="peopleVersion + '-' + p.id">
+                    <div @click="selectionMode ? toggleSelection(p.avatar) : openPerson(p)" 
+                         @contextmenu.prevent="openPersonMenu(p, $event)"
+                         class="bento-card p-3 rounded-[24px] flex flex-col items-center text-center relative group cursor-pointer border-2 transition-all duration-300"
+                         :class="selectedItems.includes(p.avatar) ? 'border-blue-500 scale-95' : 'border-transparent'">
+                        <div class="w-full aspect-square rounded-[20px] overflow-hidden mb-3">
+                            <img :src="getAvatarSrc(p)"
+                                 :style="getPersonStyle(p)"
+                                 class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500">
+                        </div>
+                        <h4 class="text-sm font-bold text-white mb-0.5 truncate w-full" x-text="p.display || 'Person'"></h4>
+                        <p class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest" x-text="p.count + ' Photos'"></p>
+                        
+                        <!-- UI Polish: Visible Trigger for Mobile -->
+                        <button x-show="!selectionMode" @click.stop="openPersonMenu(p, $event)" class="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center lg:opacity-0 group-hover:opacity-100 transition-opacity border border-white/10">
+                            <i data-lucide="more-vertical" class="w-4 h-4 text-white"></i>
+                        </button>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Bulk Actions Toolbar -->
+    <div x-show="selectionMode" x-cloak
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="translate-y-20 opacity-0"
+         x-transition:enter-end="translate-y-0 opacity-100"
+         class="fixed bottom-28 left-6 right-6 z-[120]">
+        <div class="bg-blue-600 p-4 rounded-3xl shadow-2xl flex items-center justify-between gap-4">
+            <p class="text-sm font-black text-white pl-2" x-text="selectedItems.length + ' Selected'"></p>
+            <div class="flex gap-2">
+                <button @click="lbMoveShow = true" class="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center active:scale-90 transition-all">
+                    <i data-lucide="folder-plus" class="w-5 h-5 text-white"></i>
+                </button>
+                <button @click="confirmAction('Delete ' + selectedItems.length + ' photos permanently?', 'bulkDelete')" class="w-12 h-12 bg-red-500 rounded-2xl flex items-center justify-center active:scale-90 transition-all">
+                    <i data-lucide="trash-2" class="w-5 h-5 text-white"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Global Floating Tab Bar -->
+    <nav class="fixed bottom-6 left-6 right-6 z-[55] bento-card px-2 py-3 rounded-[24px] border border-white/10 shadow-3xl">
+        <div class="flex items-center justify-between gap-1">
+            <template x-for="t in ['discover', 'moments', 'people']" :key="t">
+                <button @click="tab = t" class="flex-1 flex flex-col items-center gap-1 py-1.5 transition-all rounded-xl"
+                        :class="tab === t ? 'text-blue-500 bg-blue-500/10' : 'text-zinc-500 hover:text-white'">
+                    <i :data-lucide="t === 'discover' ? 'layout-grid' : (t === 'moments' ? 'layers' : 'users')" class="w-5 h-5"></i>
+                    <span class="text-[9px] font-bold uppercase tracking-wider" x-text="t"></span>
+                </button>
+            </template>
+            <div class="w-px h-8 bg-white/10 mx-1"></div>
+            <label class="flex-1 flex flex-col items-center gap-1 py-1.5 cursor-pointer text-zinc-500 hover:text-white">
+                <input type="file" multiple accept="image/*" class="hidden" @change="doUpload($event.target.files)">
+                <i data-lucide="plus-square" class="w-6 h-6 text-blue-500"></i>
+                <span class="text-[9px] font-bold uppercase tracking-wider">Add</span>
+            </label>
+        </div>
+    </nav>
+
+    <!-- Lightbox -->
+    <div x-show="lbOpen" x-cloak class="fixed inset-0 z-[70] bg-black flex flex-col animate-in fade-in duration-300" style="display:none">
+            <div class="absolute top-0 inset-x-0 p-6 flex justify-between items-center z-10 bg-gradient-to-b from-black/80 to-transparent">
+                <button @click="lbOpen = false" class="w-12 h-12 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center">
+                    <i data-lucide="chevron-left" class="w-6 h-6 text-white"></i>
+                </button>
+                <div class="flex gap-2">
+                    <button @click="lbMoveShow = true" class="w-12 h-12 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center">
+                        <i data-lucide="folder-plus" class="w-5 h-5 text-white"></i>
+                    </button>
+                    <button @click="lbDeleteShow = true" class="w-12 h-12 bg-red-500/20 backdrop-blur-md rounded-2xl flex items-center justify-center border border-red-500/20">
+                        <i data-lucide="trash-2" class="w-5 h-5 text-red-500"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex-1 flex flex-col items-center justify-center px-4 relative pt-20">
+                <div class="flex-1 flex items-center justify-center w-full relative group">
+                    <!-- Navigation Arrows (Desktop) -->
+                    <button @click="lbPrev()" class="absolute left-0 top-1/2 -translate-y-1/2 w-14 h-14 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20 pointer-events-auto">
+                        <i data-lucide="chevron-left" class="w-8 h-8"></i>
+                    </button>
+                    <button @click="lbNext()" class="absolute right-0 top-1/2 -translate-y-1/2 w-14 h-14 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20 pointer-events-auto">
+                        <i data-lucide="chevron-right" class="w-8 h-8"></i>
+                    </button>
+
+                    <img :src="lbPhotos[lbIndex] ? '/images/' + lbPhotos[lbIndex].file_path.replace('/root/memories-sorted/data/input/', '') : ''" 
+                         class="max-w-full max-h-[60vh] object-contain rounded-2xl shadow-2xl transition-all duration-300 pointer-events-none"
+                         :class="lbSwipeOffset !== 0 ? 'scale-95 opacity-50' : ''"
+                         @touchstart="lbTStart = $event.touches[0].clientX; lbTStartTime = Date.now()"
+                         @touchend="lbTEnd($event.changedTouches[0].clientX)">
+                </div>
+
+                <div class="w-full max-w-2xl mt-8 mb-4 overflow-x-auto scrollbar-none flex gap-3 px-4 py-3 bg-zinc-900/50 backdrop-blur-2xl rounded-3xl border border-white/5 shadow-2xl">
+                    <template x-for="(p, i) in lbPhotos" :key="'strip-' + p.file_path">
+                        <button @click="lbIndex = i" 
+                                class="flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 transition-all duration-300 ring-blue-500/30"
+                                :class="lbIndex === i ? 'border-blue-500 scale-110 ring-4 z-10 shadow-blue-500/20' : 'border-transparent opacity-40 grayscale-[0.5] scale-95 hover:opacity-100 hover:scale-100 hover:grayscale-0'">
+                            <img :src="'/images/' + p.file_path.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover">
+                        </button>
+                    </template>
+                </div>
+            </div>
+
+            <div class="p-8 pb-32 bg-gradient-to-t from-black via-black/80 to-transparent">
+                <div class="max-w-lg mx-auto">
+                    <div x-show="!lbCaptionEdit" @click="lbCaptionEdit = true; lbCaption = lbPhotos[lbIndex]?.caption || ''" class="mb-4 cursor-text">
+                        <p class="text-lg font-medium text-white/90 leading-relaxed italic" 
+                           x-text="lbPhotos[lbIndex]?.caption || 'Add a caption...'"></p>
+                    </div>
+                    <div x-show="lbCaptionEdit" class="mb-4">
+                        <textarea x-model="lbCaption" class="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white outline-none focus:ring-2 focus:ring-blue-500 mb-2"></textarea>
+                        <div class="flex gap-2">
+                            <button @click="lbCaptionEdit = false" class="flex-1 py-3 rounded-xl bg-white/5 text-sm font-bold">Cancel</button>
+                            <button @click="lbSaveCaption()" class="flex-1 py-3 rounded-xl bg-blue-500 text-sm font-bold">Save</button>
+                        </div>
+                    </div>
+                    <div class="flex flex-wrap gap-2 opacity-60">
+                        <template x-for="tag in (lbPhotos[lbIndex]?.ai_desc || '').split(',').slice(0, 5)">
+                            <span class="text-xs font-bold uppercase tracking-wider px-2 py-1 bg-white/10 rounded-lg" x-text="tag.trim()"></span>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Delete Confirmation -->
+    <div x-show="lbDeleteShow" x-cloak class="fixed inset-0 z-[75] flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl" style="display:none">
+        <div class="bg-zinc-900 border border-white/10 rounded-3xl w-full max-w-sm p-6 shadow-2xl text-center">
+            <div class="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i data-lucide="trash-2" class="w-8 h-8 text-red-500"></i>
+            </div>
+            <h3 class="text-xl font-bold text-white mb-2">Delete Photo?</h3>
+            <p class="text-sm text-zinc-400 mb-6">This cannot be undone.</p>
+            <div class="flex gap-3">
+                <button @click="lbDeleteShow = false" class="flex-1 py-3 rounded-2xl bg-white/5 text-white font-bold">Cancel</button>
+                <button @click="doDeletePhoto()" class="flex-1 py-3 rounded-2xl bg-red-500 text-white font-bold">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Confirm Dialog -->
+    <div x-show="confirmShow" x-cloak class="fixed inset-0 z-[75] flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl" style="display:none">
+        <div class="bg-zinc-900 border border-white/10 rounded-3xl w-full max-w-sm p-6 shadow-2xl text-center">
+            <h3 class="text-xl font-bold text-white mb-2" x-text="confirmMessage"></h3>
+            <div class="flex gap-3 mt-6">
+                <button @click="confirmShow = false" class="flex-1 py-3 rounded-2xl bg-white/5 text-white font-bold">Cancel</button>
+                <button @click="doConfirm()" class="flex-1 py-3 rounded-2xl bg-blue-500 text-white font-bold">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Rename Person -->
+    <div x-show="rnOpen" x-cloak class="fixed inset-0 z-[75] flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl" style="display:none">
+        <div class="bg-zinc-900 border border-white/10 rounded-3xl w-full max-w-sm p-6 shadow-2xl">
+            <h3 class="text-xl font-bold text-white mb-6">Rename Person</h3>
+            <input x-model="rnInput" type="text" @keyup.enter="doRename()"
+                class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-5 mb-6 text-white outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Enter new name" x-ref="rnField">
+            <div class="flex gap-3">
+                <button @click="rnOpen = false" class="flex-1 py-3 rounded-2xl bg-white/5 text-white font-bold">Cancel</button>
+                <button @click="doRename()" class="flex-1 py-3 rounded-2xl bg-blue-500 text-white font-bold">Rename</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Moment Context Menu -->
+    <div x-show="momentMenuOpen" x-cloak class="fixed inset-0 z-[73]" style="display:none" @click="closeMomentMenu()">
+        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-zinc-900 border border-white/10 rounded-2xl p-2 w-64 shadow-2xl">
+            <button @click="openRenameMoment(momentMenuTarget); closeMomentMenu()" class="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 rounded-xl flex items-center gap-3">
+                <i data-lucide="edit-2" class="w-4 h-4"></i> Rename
+            </button>
+            <hr class="border-white/10 my-1">
+            <button @click="confirmAction('Delete &quot;'+momentMenuTarget.label+'&quot;? This cannot be undone.','deleteMoment::'+momentMenuTarget.id); closeMomentMenu()" class="w-full px-4 py-3 text-left text-sm text-red-400 hover:bg-red-500/10 rounded-xl flex items-center gap-3">
+                <i data-lucide="trash-2" class="w-4 h-4"></i> Delete
+            </button>
+        </div>
+    </div>
+
+    <!-- Modal: Rename Moment -->
+    <div x-show="mgRenameOpen" x-cloak class="fixed inset-0 z-[75] flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl" style="display:none">
+        <div class="bg-zinc-900 border border-white/10 rounded-3xl w-full max-w-sm p-6 shadow-2xl">
+            <h3 class="text-xl font-bold text-white mb-6">Rename Moment</h3>
+            <input x-model="mgRenameInput" type="text" @keyup.enter="doRenameMoment()"
+                class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-5 mb-6 text-white outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Enter new name">
+            <div class="flex gap-3">
+                <button @click="mgRenameOpen = false" class="flex-1 py-3 rounded-2xl bg-white/5 text-white font-bold">Cancel</button>
+                <button @click="doRenameMoment()" class="flex-1 py-3 rounded-2xl bg-blue-500 text-white font-bold">Rename</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Organize / Add to Moment -->
+    <div x-show="lbMoveShow" x-cloak class="fixed inset-0 z-[73] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-xl" style="display:none">
+        <div @click="$el.closest('.fixed').removeAttribute('style'); lbMoveShow = false" class="bg-zinc-900 border-t sm:border border-white/10 rounded-t-[32px] sm:rounded-3xl w-full max-w-lg p-6 shadow-2xl">
+                <div class="w-12 h-1.5 bg-white/10 rounded-full mx-auto mb-6 sm:hidden"></div>
+                <h3 class="text-xl font-bold text-white mb-6">Organize Photo</h3>
+                
+                <div class="mb-8">
+                    <p class="text-xs text-zinc-500 uppercase tracking-widest font-bold mb-4">Add to Moment</p>
+                    <div class="flex gap-3 overflow-x-auto pb-4 -mx-2 px-2 scrollbar-none">
+                        <template x-for="m in moments" :key="m.id">
+                            <button @click="doAddToMoment(m.id)" 
+                                    class="flex-shrink-0 w-24 bg-white/5 border border-white/10 rounded-2xl p-2 text-center hover:bg-white/10 active:scale-95 transition-all">
+                                <div class="w-full aspect-square rounded-xl overflow-hidden mb-2 bg-zinc-800 flex items-center justify-center">
+                                    <img :src="m.cover_image ? '/images/' + m.cover_image.replace('/root/memories-sorted/data/input/', '') : ''" 
+                                         x-show="m.cover_image" 
+                                         class="w-full h-full object-cover">
+                                    <div x-show="!m.cover_image" class="w-full h-full flex items-center justify-center">
+                                        <i data-lucide="image" class="w-6 h-6 text-zinc-600"></i>
+                                    </div>
+                                </div>
+                                <p class="text-xs font-bold text-white truncate" x-text="m.label"></p>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+
+                <div class="mb-8">
+                    <p class="text-xs text-zinc-500 uppercase tracking-widest font-bold mb-4">Move to Folder</p>
+                    <div class="grid grid-cols-2 gap-3">
+                        <template x-for="folder in ['Family', 'Travel', 'Events', 'General']" :key="folder">
+                            <button @click="doMovePhoto('/root/memories-sorted/data/' + folder)" 
+                                    class="bg-white/5 border border-white/10 rounded-2xl py-4 px-4 text-center hover:bg-white/10 active:scale-95 transition-all">
+                                <p class="text-white font-bold text-xs" x-text="folder"></p>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+
+                <button @click="lbMoveShow = false" class="w-full py-4 rounded-2xl text-zinc-400 font-bold hover:bg-white/5 transition-colors">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: New Moment with Photo Select -->
+    <div x-show="addMomentOpen" x-cloak class="fixed inset-0 z-[73] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-md" style="display:none">
+        <div class="bg-zinc-900 border-t sm:border border-white/10 rounded-t-[32px] sm:rounded-3xl w-full max-w-lg p-6 shadow-2xl">
+                <h3 class="text-2xl font-bold text-white mb-1">New Moment</h3>
+                <p class="text-sm text-zinc-500 mb-6">Group your favorite memories.</p>
+                
+                <input x-model="newMomentLabel" type="text" 
+                    class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-5 mb-6 text-white outline-none focus:ring-2 focus:ring-blue-500" 
+                    placeholder="Moment Name (e.g. Summer 2026)">
+
+                <div class="mb-6">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-xs font-bold text-zinc-400 uppercase tracking-widest">Select Photos</span>
+                        <span class="text-xs font-bold text-blue-400" x-text="selectedPhotos.length + ' selected'"></span>
+                    </div>
+                    <div class="flex gap-2 overflow-x-auto pb-2 -mx-2 px-2 scrollbar-none">
+                        <template x-for="p in allPhotos.slice(0, 20)" :key="p.file_path">
+                            <div @click="selectedPhotos.includes(p.file_path) ? selectedPhotos = selectedPhotos.filter(x => x !== p.file_path) : selectedPhotos.push(p.file_path)"
+                                 class="relative flex-shrink-0 w-24 h-24 rounded-xl overflow-hidden cursor-pointer active:scale-95 transition-all">
+                                <img :src="'/images/' + p.file_path.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover">
+                                <div class="absolute inset-0 bg-blue-500/40 flex items-center justify-center opacity-0 transition-opacity"
+                                     :class="selectedPhotos.includes(p.file_path) ? 'opacity-100' : 'opacity-0'">
+                                    <i data-lucide="check" class="w-8 h-8 text-white"></i>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <div class="flex gap-3">
+                    <button @click="addMomentOpen = false" class="flex-1 py-4 text-zinc-500 font-bold">Cancel</button>
+                    <button @click="doAddMoment()" class="flex-1 bg-blue-500 py-4 rounded-2xl font-bold">Create</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Person Gallery -->
+    <template x-if="pgOpen">
+        <div class="fixed inset-0 z-[65] bg-black flex flex-col" @click.self="pgOpen = false">
+            <div class="flex items-center justify-between p-4 bg-zinc-900/80 backdrop-blur-md z-10">
+                <div>
+                    <h2 class="text-xl font-bold text-white" x-text="pgPerson?.display || 'Person'"></h2>
+                    <p class="text-xs text-zinc-500" x-text="pgPhotos.length + ' photos'"></p>
+                </div>
+                <button @click="pgOpen = false" class="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
+                    <i data-lucide="x" class="w-5 h-5 text-white"></i>
+                </button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-4">
+                <div class="grid grid-cols-3 gap-2">
+                    <template x-for="(photo, idx) in pgPhotos" :key="'pg-' + photo.file_path">
+                        <div @click="lbFromPhotos([...pgPhotos], idx); pgOpen = false; lbOpen = true" class="aspect-square rounded-xl overflow-hidden cursor-pointer">
+                            <img :src="'/images/' + photo.file_path.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover active:scale-95 transition-transform">
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <!-- Modal: Moment Gallery -->
+    <template x-if="mgOpen">
+        <div class="fixed inset-0 z-[65] bg-black flex flex-col" @click.self="mgOpen = false">
+            <div class="flex items-center justify-between p-4 bg-zinc-900/80 backdrop-blur-md z-10">
+                <div>
+                    <h2 class="text-xl font-bold text-white" x-text="mgMoment?.label || 'Moment'"></h2>
+                    <p class="text-xs text-zinc-500" x-text="mgPhotos.length + ' photos'"></p>
+                </div>
+                <button @click="mgOpen = false" class="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
+                    <i data-lucide="x" class="w-5 h-5 text-white"></i>
+                </button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-4 pb-20">
+                <div class="grid grid-cols-3 gap-2">
+                    <template x-for="(photo, idx) in mgPhotos" :key="'mg-' + photo.file_path">
+                        <div @click="lbFromPhotos([...mgPhotos], idx); mgOpen = false; lbOpen = true" class="aspect-square rounded-xl overflow-hidden cursor-pointer">
+                            <img :src="'/images/' + photo.file_path.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover active:scale-95 transition-transform">
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <!-- Modal: Person Context Menu -->
+    <div x-show="personMenuOpen" x-cloak class="fixed inset-0 z-[73]" style="display:none" @click="closePersonMenu()">
+        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-zinc-900 border border-white/10 rounded-2xl p-2 w-64 shadow-2xl">
+            <button @click="openPerson(personMenuTarget); closePersonMenu()" class="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 rounded-xl flex items-center gap-3">
+                <i data-lucide="images" class="w-4 h-4"></i> View Photos
+            </button>
+            <button @click="openRename(personMenuTarget); closePersonMenu()" class="w-full px-4 py-3 text-left text-sm text-zinc-400 hover:bg-white/10 rounded-xl flex items-center gap-3">
+                <i data-lucide="edit-2" class="w-4 h-4"></i> Rename
+            </button>
+            <hr class="border-white/10 my-1">
+            <button @click="confirmAction('Delete '+personMenuTarget.display+'? Photos keep their faces but this person will be removed.','deletePerson::'+personMenuTarget.id); closePersonMenu()" class="w-full px-4 py-3 text-left text-sm text-red-400 hover:bg-red-500/10 rounded-xl flex items-center gap-3">
+                <i data-lucide="trash-2" class="w-4 h-4"></i> Delete
+            </button>
+        </div>
+    </div>
+
+    <!-- App Logic -->
+    <script>
+        function app() {
+            return {
+                tab: 'discover',
+                loading: false,
+                allPhotos: [],
+                moments: [],
+                people: [],
+                insights: [],
+                searchQuery: '',
+                filteredPeople: [],
+                peopleVersion: 0,
+                toast: { show: false, text: '', type: 'info' },
+                uploading: false,
+                uploadProgress: 0,
+                uploadStatus: 'idle', // idle, uploading, syncing, faces, vectors, captions, done, error
+                currentJobId: null, // Used for single-file upload progress (deprecated with multi-upload)
+                currentUploadJobs: {}, // {jobId: {status: string, filename: string, progress: number, found_people: []}}
+                foundInUpload: [],
+                uploadPreview: null, // For single-file preview
+                
+                // Onboarding
+                showOnboarding: false,
+                onboardingStep: 1,
+                
+                // Modal States
+                addMomentOpen: false,
+                newMomentLabel: '',
+                selectedPhotos: [],
+                
+                // Person Gallery
+                pgOpen: false,
+                pgPerson: null,
+                pgPhotos: [],
+                personMenuOpen: false,
+                personMenuTarget: null,
+                rnOpen: false,
+                rnId: '',
+                rnInput: '',
+
+                // Moment Context Menu
+                momentMenuOpen: false,
+                momentMenuTarget: null,
+                mgRenameOpen: false,
+                mgRenameTarget: null,
+                mgRenameInput: '',
+
+                // Moment Gallery
+                mgOpen: false,
+                mgMoment: null,
+                mgPhotos: [],
+                mgEdit: false,
+                
+                // Selection / Bulk
+                selectionMode: false,
+                selectedItems: [],
+                
+                // Lightbox
+                lbOpen: false,
+                lbIndex: 0,
+                lbPhotos: [],
+                lbDetail: true,
+                lbCaption: '',
+                lbPhoto: null,
+                lbCaptionEdit: false,
+                lbMoveShow: false,
+                lbDeleteShow: false,
+                lbSwipeOffset: 0,
+                lbTStart: 0,
+                lbTStartTime: 0,
+                confirmShow: false,
+                confirmMessage: '',
+                confirmAction: '',
+
+                async init() {
+                    this.showOnboarding = !localStorage.getItem('zaiya_onboarded');
+                    await this.refreshAll();
+                    this.$nextTick(() => lucide.createIcons());
+                    
+                    // Keyboard navigation for Lightbox
+                    window.addEventListener('keydown', (e) => {
+                        if (!this.lbOpen) return;
+                        if (e.key === 'ArrowRight') this.lbNext();
+                        if (e.key === 'ArrowLeft') this.lbPrev();
+                        if (e.key === 'Escape') this.lbOpen = false;
+                    });
+
+                    // Lucide watcher
+                    this.$watch('tab', () => this.$nextTick(() => lucide.createIcons()));
+                    this.$watch('lbOpen', () => this.$nextTick(() => lucide.createIcons()));
+                    this.$watch('searchQuery', () => this.filterPeople());
+                },
+
+                flash(text, type = 'info') {
+                    this.toast = { show: true, text, type };
+                    setTimeout(() => this.toast.show = false, 3000);
+                },
+
+                async refreshAll() {
+                    try {
+                        const [pRes, mRes, pRegRes, iRes] = await Promise.all([
+                            fetch('/api/photos'),
+                            fetch('/api/moments'),
+                            fetch('/api/people'),
+                            fetch('/api/insights')
+                        ]);
+                        this.allPhotos = await pRes.json() || [];
+                        this.moments = (await mRes.json() || []).sort((a,b) => b.timestamp - a.timestamp);
+                        this.insights = await iRes.json() || [];
+                        const newPeople = await pRegRes.json() || [];
+                        // Pre-compute avatarUrl for each person so Alpine gets a plain string
+                        for (const p of newPeople) {
+                            if (p.avatar) {
+                                const path = p.avatar.replace('/root/memories-sorted/data/input/', '');
+                                if (p.face_bbox && p.face_bbox.length >= 4) {
+                                    const [cx, cy, fw, fh] = p.face_bbox;
+                                    p.avatarUrl = `/crop/${path}?crop=${cx},${cy},${fw},${fh}&t=${Date.now()}`;
+                                } else {
+                                    p.avatarUrl = `/images/${path}?t=${Date.now()}`;
+                                }
+                            } else {
+                                p.avatarUrl = '';
+                            }
+                        }
+                        this.people = newPeople;
+                        this.peopleVersion++;
+                    } catch (e) {
+                        this.flash('System connection error', 'error');
+                    }
+                },
+
+                filterPeople() {
+                    // Trigger reactivity for search
+                    this.people = [...this.people];
+                },
+
+                get filteredPeople() {
+                    const q = (this.searchQuery || '').toLowerCase();
+                    return this.people.filter(pe => {
+                        const name = pe.display || 'Person';
+                        return name.toLowerCase().includes(q);
+                    });
+                },
+
+                getAvatarSrc(p) { return p.avatarUrl || ''; },
+                getPersonStyle(p) { return ''; },
+
+                openLightbox(idx, photos) {
+                    this.lbIndex = idx;
+                    this.lbPhotos = [...photos];
+                    this.lbDetail = true;
+                    this.lbCaptionEdit = false;
+                    this.lbSwipeOffset = 0;
+                    this.lbOpen = true;
+                },
+
+                lbTEnd(endX) {
+                    const diff = this.lbTStart - endX;
+                    const time = Date.now() - this.lbTStartTime;
+                    if (Math.abs(diff) > 50 && time < 300) {
+                        if (diff > 0) this.lbNext();
+                        else this.lbPrev();
+                    }
+                    this.lbSwipeOffset = 0;
+                },
+
+                toggleSelection(path) {
+                    if (this.selectedItems.includes(path)) {
+                        this.selectedItems = this.selectedItems.filter(x => x !== path);
+                    } else {
+                        this.selectedItems.push(path);
+                    }
+                },
+
+                exitSelection() {
+                    this.selectionMode = false;
+                    this.selectedItems = [];
+                },
+
+                completeOnboarding() {
+                    this.showOnboarding = false;
+                    localStorage.setItem('zaiya_onboarded', 'true');
+                    this.flash('Welcome aboard!');
+                },
+
+                // Person Gallery
+                openPerson(p) {
+                    this.pgPerson = p;
+                    this.pgPhotos = this.allPhotos.filter(x => (x.person_ids || []).includes(p.id));
+                    this.pgOpen = true;
+                },
+                
+                openPersonMenu(p, event) {
+                    event.stopPropagation();
+                    this.personMenuTarget = p;
+                    this.personMenuOpen = true;
+                },
+                
+                closePersonMenu() {
+                    this.personMenuOpen = false;
+                    this.personMenuTarget = null;
+                },
+
+                openRename(p) {
+                    this.rnId = p.id;
+                    this.rnInput = p.display || '';
+                    this.rnOpen = true;
+                    this.$nextTick(() => { if (this.$refs.rnField) this.$refs.rnField.focus(); });
+                },
+
+                async doRename() {
+                    if (!this.rnInput.trim()) return;
+                    try {
+                        await fetch('/api/rename', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ person_id: this.rnId, new_name: this.rnInput })
+                        });
+                        this.flash('Renamed to "' + this.rnInput + '"');
+                        this.rnOpen = false;
+                        await this.refreshAll();
+                    } catch(e) { this.flash('Rename failed', 'error'); }
+                },
+
+                // Moment Context Menu
+                openMomentMenu(m, event) {
+                    event.stopPropagation();
+                    this.momentMenuTarget = m;
+                    this.momentMenuOpen = true;
+                },
+
+                closeMomentMenu() {
+                    this.momentMenuOpen = false;
+                    this.momentMenuTarget = null;
+                },
+
+                openRenameMoment(m) {
+                    this.mgRenameTarget = m;
+                    this.mgRenameInput = m.label || '';
+                    this.mgRenameOpen = true;
+                },
+
+                async doRenameMoment() {
+                    if (!this.mgRenameInput.trim()) return;
+                    try {
+                        await fetch('/api/moments/rename', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ moment_id: this.mgRenameTarget.id, new_label: this.mgRenameInput })
+                        });
+                        this.flash('Renamed to "' + this.mgRenameInput + '"');
+                        this.mgRenameOpen = false;
+                        await this.refreshAll();
+                    } catch(e) { this.flash('Rename failed', 'error'); }
+                },
+
+                // Moment Gallery
+                openMomentGallery(m) {
+                    this.mgEdit = false;
+                    this.mgMoment = m;
+                    this.mgPhotos = (m.member_paths || []).map(fp => this.allPhotos.find(p => p.file_path === fp) || { file_path: fp, caption: '', quality_score: 0, analyzed_at: '' });
+                    this.mgOpen = true;
+                },
+
+                lbNext() { if (this.lbIndex < this.lbPhotos.length - 1) { this.lbIndex++; } },
+                lbPrev() { if (this.lbIndex > 0) { this.lbIndex--; } },
+                lbFromPhotos(arr, idx) {
+                    this.lbPhotos = [...arr];
+                    this.lbIndex = idx;
+                    this.lbDetail = true;
+                    this.lbOpen = true;
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                async doUpload(files) {
+                    if (!files || !files.length) return;
+                    this.uploading = true;
+                    this.uploadStatus = 'uploading';
+                    this.uploadProgress = 0;
+                    this.currentUploadJobs = {}; // Reset for multiple jobs
+
+                    // Local Preview
+                    const reader = new FileReader();
+                    reader.onload = (e) => this.uploadPreview = e.target.result;
+                    reader.readAsDataURL(files[0]);
+
+                    let url = '/api/upload';
+                    if (this.mgOpen && this.mgMoment) {
+                        url += `?context_type=moment&context_id=${this.mgMoment.id}`;
+                    }
+
+                    const formData = new FormData();
+                    for (let i = 0; i < files.length; i++) {
+                        formData.append('files', files[i]);
+                    }
+                    
+                    try {
+                        const res = await fetch(url, { method: 'POST', body: formData });
+                        const data = await res.json();
+                        
+                        if (data.job_ids && Array.isArray(data.job_ids)) {
+                            data.job_ids.forEach(jobId => {
+                                // Initialize progress for each job
+                                this.currentUploadJobs[jobId] = { status: 'uploading', filename: files[data.job_ids.indexOf(jobId)].name, progress: 0 };
+                            });
+                            this.pollAllStatuses();
+                        } else if (data.job_id) { // Fallback for single file response
+                            this.currentUploadJobs[data.job_id] = { status: 'uploading', filename: files[0].name, progress: 0 };
+                            this.pollAllStatuses();
+                        } else {
+                            throw new Error('No Job IDs received');
+                        }
+                    } catch (e) {
+                        this.flash(`Upload failed: ${e.message || e}`, 'error');
+                        this.uploading = false;
+                        this.uploadStatus = 'idle';
+                        this.currentUploadJobs = {};
+                        this.uploadPreview = null;
+                    }
+                },
+
+                async pollStatus() {
+                    if (!this.currentJobId) return;
+                    try {
+                        const res = await fetch(`/api/upload/status/${this.currentJobId}`);
+                        const data = await res.json();
+                        this.uploadStatus = data.status;
+                        
+                        if (data.found_people && data.found_people.length > 0) {
+                            this.foundInUpload = data.found_people;
+                        }
+
+                        if (data.status === 'done' || data.status === 'error') {
+                            const foundMsg = this.foundInUpload.length > 0 ? `AI found ${this.foundInUpload.join(', ')}!` : 'AI processing complete';
+                            this.flash(data.status === 'done' ? foundMsg : 'Pipeline failed', data.status === 'done' ? 'success' : 'error');
+                            setTimeout(() => {
+                                this.uploading = false;
+                                this.uploadStatus = 'idle';
+                                this.currentJobId = null;
+                                this.foundInUpload = [];
+                                this.uploadPreview = null;
+                                this.refreshAll();
+                            }, 3000);
+                        } else {
+                            setTimeout(() => this.pollStatus(), 800);
+                        }
+                    } catch (e) {
+                        this.uploadStatus = 'error';
+                    }
+                },
+
+                getProcessLabel() {
+                    const labels = {
+                        uploading: 'Sending to Local AI...',
+                        syncing: 'Syncing Filesystem...',
+                        faces: 'Detecting Faces...',
+                        vectors: 'Embedding CLIP Scenes...',
+                        captions: 'Thinking about Captions...',
+                        done: 'All Set!',
+                        error: 'Pipeline Error'
+                    };
+                    return labels[this.uploadStatus] || 'AI is working...';
+                },
+
+                async doAddMoment() {
+                    if (!this.newMomentLabel.trim()) return;
+                    await fetch('/api/moments/create', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ label: this.newMomentLabel, photo_paths: this.selectedPhotos })
+                    });
+                    this.addMomentOpen = false;
+                    this.newMomentLabel = '';
+                    this.selectedPhotos = [];
+                    this.flash('Moment created');
+                    await this.refreshAll();
+                },
+
+                async doAddToMoment(momentId) {
+                    const paths = this.selectionMode ? this.selectedItems : [this.lbPhotos[this.lbIndex]?.file_path];
+                    for (const path of paths) {
+                        if (!path) continue;
+                        await fetch('/api/moments/add-photo', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ moment_id: momentId, photo_path: path })
+                        });
+                    }
+                    this.lbMoveShow = false;
+                    this.flash(paths.length > 1 ? 'Photos added' : 'Photo added');
+                    this.exitSelection();
+                    await this.refreshAll();
+                },
+
+                async doMovePhoto(target) {
+                    const paths = this.selectionMode ? this.selectedItems : [this.lbPhotos[this.lbIndex]?.file_path];
+                    for (const path of paths) {
+                        if (!path) continue;
+                        await fetch('/api/photos/move', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ file_path: path, target_folder: target })
+                        });
+                    }
+                    this.lbMoveShow = false;
+                    this.lbOpen = false;
+                    this.flash(paths.length > 1 ? 'Photos moved' : 'Photo moved');
+                    this.exitSelection();
+                    await this.refreshAll();
+                },
+
+                async lbSaveCaption() {
+                    const photo = this.lbPhotos[this.lbIndex];
+                    if (!photo) return;
+                    await fetch('/api/photos/caption', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ file_path: photo.file_path, caption: this.lbCaption })
+                    });
+                    photo.caption = this.lbCaption;
+                    this.lbCaptionEdit = false;
+                    this.flash('Caption saved');
+                },
+
+                confirmAction(msg, action) {
+                    this.confirmMessage = msg;
+                    this.confirmAction = action;
+                    this.confirmShow = true;
+                },
+
+                async doConfirm() {
+                    const action = this.confirmAction;
+                    this.confirmShow = false;
+                    if (action === 'bulkDelete') {
+                        for (const path of this.selectedItems) {
+                            await fetch('/api/photos/delete', {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify({ file_path: path })
+                            });
+                        }
+                        this.flash('Deleted ' + this.selectedItems.length + ' photos');
+                        this.exitSelection();
+                        await this.refreshAll();
+                    }
+                    else if (action === 'regenerateMoments') {
+                        await fetch('/api/moments/regenerate', { method: 'POST' });
+                        this.flash('Moments regenerated');
+                        await this.refreshAll();
+                    }
+                    else if (action.startsWith('deletePerson::')) {
+                        const id = action.split('::')[1];
+                        await fetch('/api/people/delete', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ person_id: id })
+                        });
+                        this.flash('Person deleted');
+                        await this.refreshAll();
+                    }
+                    else if (action.startsWith('deleteMoment::')) {
+                        const id = action.split('::')[1];
+                        await fetch('/api/moments/delete', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ moment_id: id })
+                        });
+                        this.flash('Moment deleted');
+                        await this.refreshAll();
+                    }
+                },
+
+                async doDeletePhoto() {
+                    const photo = this.lbPhotos[this.lbIndex];
+                    if (!photo) return;
+                    await fetch('/api/photos/delete', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ file_path: photo.file_path })
+                    });
+                    this.lbPhotos.splice(this.lbIndex, 1);
+                    if (this.lbIndex >= this.lbPhotos.length) this.lbIndex = Math.max(0, this.lbPhotos.length - 1);
+                    this.lbDeleteShow = false;
+                    if (this.lbPhotos.length === 0) this.lbOpen = false;
+                    this.flash('Photo deleted');
+                }
+            }
+        }
+    </script>
+</body>
+</html>
