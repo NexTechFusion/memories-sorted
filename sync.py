@@ -73,6 +73,7 @@ class MemoriesSync:
 
     def sync(self):
         """Scan input directory, process new images."""
+        self.index = self._load_index()  # Ensure index is fresh before starting
         cataloged_paths = {item.file_path for item in self.index.image_catalog}
         processed = 0
         
