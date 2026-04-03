@@ -152,11 +152,17 @@
                     <button x-show="selectionMode" @click="exitSelection()" class="text-xs font-bold text-zinc-500 uppercase tracking-widest bg-white/5 px-3 py-1.5 rounded-lg active:scale-95 transition-all">Cancel</button>
                 </div>
                 <div class="grid grid-cols-3 gap-2">
-                    <template x-for="(p, i) in allPhotos.slice(0, 24)" :key="p.file_path">
+                    <template x-for="(p, i) in allPhotos.slice(0, 48)" :key="p.file_path">
                         <div @click="selectionMode ? toggleSelection(p.file_path) : openLightbox(i, allPhotos)" 
                              class="aspect-square rounded-xl overflow-hidden bento-card active:scale-95 transition-all relative border-2"
                              :class="selectedItems.includes(p.file_path) ? 'border-blue-500 scale-95' : 'border-transparent'">
                             <img :src="'/images/' + p.file_path.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover">
+                            <!-- Ghost and Processing Overlay -->
+                            <div x-show="p.processing_status !== 'done' && p.processing_status !== 'error'" 
+                                 class="absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center p-2 text-center">
+                                <i data-lucide="cpu" class="w-6 h-6 text-blue-400 animate-spin mb-2"></i>
+                                <p class="text-[8px] font-black uppercase text-blue-400 tracking-widest" x-text="p.processing_status"></p>
+                            </div>
                             <div x-show="selectionMode && selectedItems.includes(p.file_path)" class="absolute top-1.5 right-1.5 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center shadow-lg">
                                 <i data-lucide="check" class="w-3.5 h-3.5 text-white"></i>
                             </div>
@@ -196,8 +202,15 @@
                     <div class="bento-card rounded-3xl overflow-hidden relative group active:scale-[0.98] transition-all duration-300"
                          @contextmenu.prevent="openMomentMenu(m, $event)">
                         <div @click="openMomentGallery(m)" class="cursor-pointer">
-                            <div class="aspect-[16/9] w-full relative">
-                                <img :src="m.cover_image ? '/images/' + m.cover_image.replace('/root/memories-sorted/data/input/', '') : ''" class="w-full h-full object-cover">
+                            <div class="aspect-[16/9] w-full relative bg-zinc-900 border-b border-white/5">
+                                <template x-if="m.cover_image">
+                                    <img :src="'/images/' + m.cover_image.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover">
+                                </template>
+                                <template x-if="!m.cover_image">
+                                    <div class="w-full h-full flex items-center justify-center opacity-20">
+                                         <i data-lucide="layers" class="w-12 h-12"></i>
+                                    </div>
+                                </template>
                                 <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
                                 <div class="absolute bottom-4 left-5 right-5">
                                     <h3 class="text-2xl font-bold text-white" x-text="m.label"></h3>
@@ -344,6 +357,23 @@
                             <button @click="lbSaveCaption()" class="flex-1 py-3 rounded-xl bg-blue-500 text-sm font-bold">Save</button>
                         </div>
                     </div>
+                    <!-- People in this Photo -->
+                    <template x-if="getLbPeople().length > 0">
+                        <div class="mb-8">
+                            <p class="text-[10px] text-zinc-500 uppercase tracking-widest font-black mb-4">People in this photo</p>
+                            <div class="flex flex-wrap gap-3">
+                                <template x-for="pInfo in getLbPeople()" :key="pInfo.id">
+                                    <button @click="lbOpen = false; openPerson(pInfo)" class="flex items-center gap-2 bg-white/5 pr-3 pl-1 py-1 rounded-full border border-white/5 hover:bg-white/10 active:scale-95 transition-all">
+                                        <div class="w-8 h-8 rounded-full overflow-hidden bento-card bg-zinc-800">
+                                            <img :src="getLbFaceCrop(pInfo)" class="w-full h-full object-cover">
+                                        </div>
+                                        <span class="text-xs font-bold text-zinc-300" x-text="pInfo.display || 'User'"></span>
+                                    </button>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+
                     <div class="flex flex-wrap gap-2 opacity-60">
                         <template x-for="tag in (lbPhotos[lbIndex]?.ai_desc || '').split(',').slice(0, 5)">
                             <span class="text-xs font-bold uppercase tracking-wider px-2 py-1 bg-white/10 rounded-lg" x-text="tag.trim()"></span>
@@ -434,12 +464,14 @@
                             <button @click="doAddToMoment(m.id)" 
                                     class="flex-shrink-0 w-24 bg-white/5 border border-white/10 rounded-2xl p-2 text-center hover:bg-white/10 active:scale-95 transition-all">
                                 <div class="w-full aspect-square rounded-xl overflow-hidden mb-2 bg-zinc-800 flex items-center justify-center">
-                                    <img :src="m.cover_image ? '/images/' + m.cover_image.replace('/root/memories-sorted/data/input/', '') : ''" 
-                                         x-show="m.cover_image" 
-                                         class="w-full h-full object-cover">
-                                    <div x-show="!m.cover_image" class="w-full h-full flex items-center justify-center">
-                                        <i data-lucide="image" class="w-6 h-6 text-zinc-600"></i>
-                                    </div>
+                                    <template x-if="m.cover_image">
+                                        <img :src="'/images/' + m.cover_image.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover">
+                                    </template>
+                                    <template x-if="!m.cover_image">
+                                        <div class="w-full h-full flex items-center justify-center">
+                                            <i data-lucide="image" class="w-6 h-6 text-zinc-600"></i>
+                                        </div>
+                                    </template>
                                 </div>
                                 <p class="text-xs font-bold text-white truncate" x-text="m.label"></p>
                             </button>
@@ -449,13 +481,12 @@
 
                 <div class="mb-8">
                     <p class="text-xs text-zinc-500 uppercase tracking-widest font-bold mb-4">Move to Folder</p>
-                    <div class="grid grid-cols-2 gap-3">
-                        <template x-for="folder in ['Family', 'Travel', 'Events', 'General']" :key="folder">
-                            <button @click="doMovePhoto('/root/memories-sorted/data/' + folder)" 
-                                    class="bg-white/5 border border-white/10 rounded-2xl py-4 px-4 text-center hover:bg-white/10 active:scale-95 transition-all">
-                                <p class="text-white font-bold text-xs" x-text="folder"></p>
-                            </button>
-                        </template>
+                    <div class="flex gap-2">
+                        <input x-model="customFolderName" type="text" placeholder="Folder name..." 
+                               class="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                        <button @click="doMovePhoto('/root/memories-sorted/data/' + customFolderName)" 
+                                :disabled="!customFolderName.trim()"
+                                class="bg-blue-500 text-white px-6 rounded-xl font-bold text-sm disabled:opacity-50 active:scale-95 transition-all">Move</button>
                     </div>
                 </div>
 
@@ -514,6 +545,15 @@
                 </button>
             </div>
             <div class="flex-1 overflow-y-auto p-4">
+                <template x-if="pgPhotos.length === 0">
+                    <div class="flex flex-col items-center justify-center py-20 text-center opacity-50">
+                        <div class="w-20 h-20 bg-zinc-900 rounded-full flex items-center justify-center mb-4 border border-white/5">
+                            <i data-lucide="image-off" class="w-10 h-10 text-zinc-700"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-zinc-300">No Photos of this Person</h3>
+                        <p class="text-zinc-500 max-w-xs mx-auto mt-2">Wait for AI processing or check assignments.</p>
+                    </div>
+                </template>
                 <div class="grid grid-cols-3 gap-2">
                     <template x-for="(photo, idx) in pgPhotos" :key="'pg-' + photo.file_path">
                         <div @click="lbFromPhotos([...pgPhotos], idx); pgOpen = false; lbOpen = true" class="aspect-square rounded-xl overflow-hidden cursor-pointer">
@@ -533,11 +573,30 @@
                     <h2 class="text-xl font-bold text-white" x-text="mgMoment?.label || 'Moment'"></h2>
                     <p class="text-xs text-zinc-500" x-text="mgPhotos.length + ' photos'"></p>
                 </div>
-                <button @click="mgOpen = false" class="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
-                    <i data-lucide="x" class="w-5 h-5 text-white"></i>
-                </button>
+                <div class="flex items-center gap-2">
+                    <label class="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center cursor-pointer active:scale-95 transition-all outline-none">
+                        <input type="file" multiple accept="image/*" class="hidden" @change="doUpload($event.target.files)">
+                        <i data-lucide="plus" class="w-5 h-5 text-blue-400"></i>
+                    </label>
+                    <button @click="mgOpen = false" class="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
+                        <i data-lucide="x" class="w-5 h-5 text-white"></i>
+                    </button>
+                </div>
             </div>
             <div class="flex-1 overflow-y-auto p-4 pb-20">
+                <template x-if="mgPhotos.length === 0">
+                    <div class="flex flex-col items-center justify-center py-20 text-center opacity-50">
+                        <div class="w-20 h-20 bg-zinc-900 rounded-full flex items-center justify-center mb-4 border border-white/5">
+                            <i data-lucide="layers" class="w-10 h-10 text-zinc-700"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-zinc-300">Empty Moment</h3>
+                        <p class="text-zinc-500 max-w-xs mx-auto mt-2 mb-6">Add photos to this moment or wait for AI sync.</p>
+                        <label class="px-6 py-3 bg-blue-500 text-white font-bold rounded-xl cursor-pointer active:scale-95 transition-all">
+                            <input type="file" multiple accept="image/*" class="hidden" @change="doUpload($event.target.files)">
+                            Upload Directly
+                        </label>
+                    </div>
+                </template>
                 <div class="grid grid-cols-3 gap-2">
                     <template x-for="(photo, idx) in mgPhotos" :key="'mg-' + photo.file_path">
                         <div @click="lbFromPhotos([...mgPhotos], idx); mgOpen = false; lbOpen = true" class="aspect-square rounded-xl overflow-hidden cursor-pointer">
@@ -581,10 +640,9 @@
                 toast: { show: false, text: '', type: 'info' },
                 uploading: false,
                 uploadProgress: 0,
-                uploadStatus: 'idle', // idle, uploading, syncing, faces, vectors, captions, done, error
-                currentJobId: null, // Used for single-file upload progress (deprecated with multi-upload)
+                uploadStatus: 'idle', // overall status: idle, uploading, processing, done, error
                 currentUploadJobs: {}, // {jobId: {status: string, filename: string, progress: number, found_people: []}}
-                foundInUpload: [],
+                lastUploadedFiles: null, // For retry functionality
                 uploadPreview: null, // For single-file preview
                 
                 // Onboarding
@@ -622,6 +680,7 @@
                 // Selection / Bulk
                 selectionMode: false,
                 selectedItems: [],
+                customFolderName: '',
                 
                 // Lightbox
                 lbOpen: false,
@@ -643,6 +702,19 @@
                 async init() {
                     this.showOnboarding = !localStorage.getItem('zaiya_onboarded');
                     await this.refreshAll();
+                    
+                    // Recover active upload jobs on refresh
+                    try {
+                        const activeRes = await fetch('/api/upload/active-jobs');
+                        const activeJobs = await activeRes.json();
+                        if (Object.keys(activeJobs).length > 0) {
+                            this.currentUploadJobs = activeJobs;
+                            this.uploading = true;
+                            this.uploadStatus = 'processing';
+                            this.pollAllStatuses();
+                        }
+                    } catch (e) {}
+
                     this.$nextTick(() => lucide.createIcons());
                     
                     // Keyboard navigation for Lightbox
@@ -656,6 +728,8 @@
                     // Lucide watcher
                     this.$watch('tab', () => this.$nextTick(() => lucide.createIcons()));
                     this.$watch('lbOpen', () => this.$nextTick(() => lucide.createIcons()));
+                    this.$watch('pgOpen', () => this.$nextTick(() => lucide.createIcons()));
+                    this.$watch('mgOpen', () => this.$nextTick(() => lucide.createIcons()));
                     this.$watch('searchQuery', () => this.filterPeople());
                 },
 
@@ -692,6 +766,18 @@
                         }
                         this.people = newPeople;
                         this.peopleVersion++;
+
+                        // Sync active Moment Gallery state
+                        if (this.mgOpen && this.mgMoment) {
+                            const updatedMoment = this.moments.find(m => m.id === this.mgMoment.id);
+                            if (updatedMoment) {
+                                this.mgMoment = updatedMoment;
+                                // Combine actual member paths + any ghosts tagged for this moment
+                                const actualPhotos = (updatedMoment.member_paths || []).map(fp => this.allPhotos.find(p => p.file_path === fp)).filter(Boolean);
+                                const ghostPhotos = this.allPhotos.filter(p => p.is_ghost && p.context_type === 'moment' && p.context_id === updatedMoment.id);
+                                this.mgPhotos = [...ghostPhotos, ...actualPhotos];
+                            }
+                        }
                     } catch (e) {
                         this.flash('System connection error', 'error');
                     }
@@ -826,7 +912,10 @@
                 openMomentGallery(m) {
                     this.mgEdit = false;
                     this.mgMoment = m;
-                    this.mgPhotos = (m.member_paths || []).map(fp => this.allPhotos.find(p => p.file_path === fp) || { file_path: fp, caption: '', quality_score: 0, analyzed_at: '' });
+                    // Combine actual member paths + any ghosts tagged for this moment
+                    const actualPhotos = (m.member_paths || []).map(fp => this.allPhotos.find(p => p.file_path === fp) || { file_path: fp, caption: '', processing_status: 'done' }).filter(Boolean);
+                    const ghostPhotos = this.allPhotos.filter(p => p.is_ghost && p.context_type === 'moment' && p.context_id === m.id);
+                    this.mgPhotos = [...ghostPhotos, ...actualPhotos];
                     this.mgOpen = true;
                 },
 
@@ -842,12 +931,13 @@
 
                 async doUpload(files) {
                     if (!files || !files.length) return;
+                    this.lastUploadedFiles = files; // Store for retry
                     this.uploading = true;
                     this.uploadStatus = 'uploading';
-                    this.uploadProgress = 0;
-                    this.currentUploadJobs = {}; // Reset for multiple jobs
+                    this.currentUploadJobs = {};
+                    this.uploadPreview = null; // Clear old preview
 
-                    // Local Preview
+                    // Local Preview for first image
                     const reader = new FileReader();
                     reader.onload = (e) => this.uploadPreview = e.target.result;
                     reader.readAsDataURL(files[0]);
@@ -857,78 +947,143 @@
                         url += `?context_type=moment&context_id=${this.mgMoment.id}`;
                     }
 
-                    const formData = new FormData();
-                    for (let i = 0; i < files.length; i++) {
-                        formData.append('files', files[i]);
-                    }
-                    
                     try {
-                        const res = await fetch(url, { method: 'POST', body: formData });
-                        const data = await res.json();
-                        
-                        if (data.job_ids && Array.isArray(data.job_ids)) {
-                            data.job_ids.forEach(jobId => {
-                                // Initialize progress for each job
-                                this.currentUploadJobs[jobId] = { status: 'uploading', filename: files[data.job_ids.indexOf(jobId)].name, progress: 0 };
-                            });
-                            this.pollAllStatuses();
-                        } else if (data.job_id) { // Fallback for single file response
-                            this.currentUploadJobs[data.job_id] = { status: 'uploading', filename: files[0].name, progress: 0 };
-                            this.pollAllStatuses();
-                        } else {
-                            throw new Error('No Job IDs received');
+                        for (const file of files) { // Iterate through selected files
+                            const formData = new FormData();
+                            formData.append('file', file); // Append each file individually
+                            
+                            // Let's make individual upload calls to the API for each file
+                            const res = await fetch(url, { method: 'POST', body: formData });
+                            const data = await res.json();
+
+                            if (data.job_id) {
+                                this.currentUploadJobs[data.job_id] = { 
+                                    status: 'queued', 
+                                    filename: file.name, 
+                                    progress: 0, 
+                                    found_people: [] 
+                                };
+                            } else {
+                                throw new Error('No Job ID received for ' + file.name);
+                            }
                         }
+                        this.pollAllStatuses(); // Start polling for all jobs
                     } catch (e) {
                         this.flash(`Upload failed: ${e.message || e}`, 'error');
-                        this.uploading = false;
-                        this.uploadStatus = 'idle';
-                        this.currentUploadJobs = {};
-                        this.uploadPreview = null;
+                        this.resetUpload();
                     }
                 },
 
-                async pollStatus() {
-                    if (!this.currentJobId) return;
-                    try {
-                        const res = await fetch(`/api/upload/status/${this.currentJobId}`);
-                        const data = await res.json();
-                        this.uploadStatus = data.status;
+                async pollAllStatuses() {
+                    let allDone = true;
+                    let anyError = false;
+                    let overallProgress = 0;
+                    let completedJobs = 0;
+                    let anyDoneThisTurn = false;
+
+                    const jobIds = Object.keys(this.currentUploadJobs);
+                    if (jobIds.length === 0) {
+                        this.resetUpload();
+                        return;
+                    }
+
+                    for (const jobId of jobIds) {
+                        const job = this.currentUploadJobs[jobId];
                         
-                        if (data.found_people && data.found_people.length > 0) {
-                            this.foundInUpload = data.found_people;
+                        // Skip jobs that are already terminal in local state
+                        if (job.status === 'done' || job.status === 'error') {
+                            completedJobs++;
+                            if (job.status === 'done') overallProgress += 100;
+                            continue;
                         }
 
-                        if (data.status === 'done' || data.status === 'error') {
-                            const foundMsg = this.foundInUpload.length > 0 ? `AI found ${this.foundInUpload.join(', ')}!` : 'AI processing complete';
-                            this.flash(data.status === 'done' ? foundMsg : 'Pipeline failed', data.status === 'done' ? 'success' : 'error');
-                            setTimeout(() => {
-                                this.uploading = false;
-                                this.uploadStatus = 'idle';
-                                this.currentJobId = null;
-                                this.foundInUpload = [];
-                                this.uploadPreview = null;
-                                this.refreshAll();
-                            }, 3000);
-                        } else {
-                            setTimeout(() => this.pollStatus(), 800);
+                        try {
+                            const res = await fetch(`/api/upload/status/${jobId}`);
+                            const data = await res.json();
+                            
+                            if (data.status === 'done' && job.status !== 'done') {
+                                anyDoneThisTurn = true;
+                            }
+                            
+                            job.status = data.status;
+                            job.error = data.error; // Capture error message
+                            job.found_people = data.found_people || [];
+                            
+                            if (job.status === 'done' || job.status === 'error') {
+                                completedJobs++;
+                            } else {
+                                allDone = false;
+                            }
+                            if (job.status === 'error') {
+                                anyError = true;
+                            }
+                            // Progress estimation
+                            if (job.status === 'uploading') overallProgress += 20;
+                            else if (job.status === 'syncing') overallProgress += 40;
+                            else if (job.status === 'faces') overallProgress += 60;
+                            else if (job.status === 'vectors') overallProgress += 80;
+                            else if (job.status === 'done') overallProgress += 100;
+                        } catch (e) {
+                            job.status = 'error';
+                            job.error = `Network error: ${e.message || e}`;
+                            anyError = true;
+                            allDone = false;
+                            completedJobs++;
                         }
-                    } catch (e) {
-                        this.uploadStatus = 'error';
+                    }
+
+                    // Reactively refresh grid if any job finished
+                    if (anyDoneThisTurn) {
+                        this.refreshAll();
+                    }
+
+                    this.uploadProgress = (overallProgress / jobIds.length) || 0;
+                    this.uploadStatus = anyError ? 'error' : (allDone ? 'done' : 'processing');
+                    
+                    if (allDone) {
+                        const allFoundPeople = Object.values(this.currentUploadJobs).flatMap(j => j.found_people || []);
+                        const foundMsg = allFoundPeople.length > 0 ? `AI found ${[...new Set(allFoundPeople)].join(', ')}!` : 'AI processing complete';
+                        this.flash(anyError ? 'Some uploads failed' : foundMsg, anyError ? 'error' : 'success');
+                        
+                        // Immediate refresh one last time
+                        this.refreshAll();
+
+                        setTimeout(() => {
+                            this.resetUpload();
+                        }, 3000);
+                    } else {
+                        setTimeout(() => this.pollAllStatuses(), 800);
                     }
                 },
 
                 getProcessLabel() {
-                    const labels = {
-                        uploading: 'Sending to Local AI...',
-                        syncing: 'Syncing Filesystem...',
-                        faces: 'Detecting Faces...',
-                        vectors: 'Embedding CLIP Scenes...',
-                        captions: 'Thinking about Captions...',
-                        done: 'All Set!',
-                        error: 'Pipeline Error'
-                    };
-                    return labels[this.uploadStatus] || 'AI is working...';
+                    const statuses = Object.values(this.currentUploadJobs).map(j => j.status);
+                    if (statuses.length === 0) return 'Idle';
+                    if (statuses.includes('error')) return 'Error in pipeline';
+                    if (statuses.includes('uploading')) return 'Sending to Local AI...';
+                    if (statuses.includes('syncing')) return 'Syncing Filesystem...';
+                    if (statuses.includes('faces')) return 'Detecting Faces...';
+                    if (statuses.includes('vectors')) return 'Embedding CLIP Scenes...';
+                    if (statuses.includes('queued')) return 'Queued for processing...';
+                    return 'AI is working...';
                 },
+
+                get totalDoneCount() {
+                    return Object.values(this.currentUploadJobs).filter(job => job.status === 'done' || job.status === 'error').length;
+                },
+
+                get isTotalDone() {
+                    return this.totalDoneCount === Object.keys(this.currentUploadJobs).length;
+                },
+
+                resetUpload() {
+                    this.uploading = false;
+                    this.uploadStatus = 'idle';
+                    this.currentUploadJobs = {};
+                    this.lastUploadedFiles = null;
+                    this.uploadPreview = null;
+                },
+
 
                 async doAddMoment() {
                     if (!this.newMomentLabel.trim()) return;
@@ -990,6 +1145,32 @@
                     this.flash('Caption saved');
                 },
 
+                getLbPeople() {
+                    const photo = this.lbPhotos[this.lbIndex];
+                    if (!photo || !photo.person_ids) return [];
+                    // Return unique people only
+                    const uniqueIds = [...new Set(photo.person_ids)];
+                    return this.people.filter(p => uniqueIds.includes(p.id));
+                },
+
+                getLbFaceCrop(person) {
+                    const photo = this.lbPhotos[this.lbIndex];
+                    if (!photo || !person) return '';
+                    
+                    const asgn = (photo.assignments || []).find(a => a.person_id === person.id);
+                    if (asgn && asgn.bbox && asgn.bbox.length === 4 && photo.resolution) {
+                        const [x1, y1, x2, y2] = asgn.bbox;
+                        const [w, h] = photo.resolution;
+                        const fw = x2 - x1;
+                        const fh = y2 - y1;
+                        const cx = ((x1 + fw/2) / w * 100).toFixed(2);
+                        const cy = ((y1 + fh/2) / h * 100).toFixed(2);
+                        const filename = photo.file_path.replace('/root/memories-sorted/data/input/', '');
+                        return `/crop/${filename}?crop=${cx},${cy},${fw.toFixed(0)},${fh.toFixed(0)}&t=${Date.now()}`;
+                    }
+                    return person.avatarUrl;
+                },
+
                 confirmAction(msg, action) {
                     this.confirmMessage = msg;
                     this.confirmAction = action;
@@ -1041,16 +1222,34 @@
                 async doDeletePhoto() {
                     const photo = this.lbPhotos[this.lbIndex];
                     if (!photo) return;
-                    await fetch('/api/photos/delete', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ file_path: photo.file_path })
-                    });
-                    this.lbPhotos.splice(this.lbIndex, 1);
-                    if (this.lbIndex >= this.lbPhotos.length) this.lbIndex = Math.max(0, this.lbPhotos.length - 1);
-                    this.lbDeleteShow = false;
-                    if (this.lbPhotos.length === 0) this.lbOpen = false;
-                    this.flash('Photo deleted');
+                    const path = photo.file_path;
+
+                    try {
+                        await fetch('/api/photos/delete', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ file_path: path })
+                        });
+                        
+                        // 1. Remove from Lightbox
+                        this.lbPhotos.splice(this.lbIndex, 1);
+                        if (this.lbIndex >= this.lbPhotos.length) this.lbIndex = Math.max(0, this.lbPhotos.length - 1);
+                        
+                        // 2. Remove from global catalogs immediately for reactivity
+                        this.allPhotos = this.allPhotos.filter(p => p.file_path !== path);
+                        if (this.mgOpen) this.mgPhotos = this.mgPhotos.filter(p => p.file_path !== path);
+                        if (this.pgOpen) this.pgPhotos = this.pgPhotos.filter(p => p.file_path !== path);
+
+                        this.lbDeleteShow = false;
+                        if (this.lbPhotos.length === 0) this.lbOpen = false;
+                        
+                        this.flash('Photo deleted');
+                        
+                        // 3. Full background refresh to sync Moments/Counts
+                        await this.refreshAll();
+                    } catch(e) {
+                        this.flash('Delete failed', 'error');
+                    }
                 }
             }
         }

@@ -43,7 +43,7 @@ insight = MemoryIntelligence()
 moments_engine = MomentsEngine()
 
 UPLOAD_JOBS = {}
-PROCESS_LOCK = False
+UPLOAD_QUEUE = asyncio.Queue()
 
 def _load_jobs():
     global UPLOAD_JOBS
@@ -58,6 +58,26 @@ def _save_jobs():
 
 _load_jobs()
 
+async def upload_worker():
+    """Sequentially process pending uploads to avoid race conditions."""
+    while True:
+        job_info = await UPLOAD_QUEUE.get()
+        job_id = job_info['job_id']
+        file_path = job_info['file_path']
+        ctx_type = job_info.get('context_type')
+        ctx_id = job_info.get('context_id')
+        
+        try:
+            await _bg_process_photo(file_path, job_id, ctx_type, ctx_id)
+        except Exception as e:
+            print(f"[Worker Error] {e}")
+        finally:
+            UPLOAD_QUEUE.task_done()
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(upload_worker())
+
 def _refresh_insights():
     data = insight.generate_insights()
     with open(INSIGHTS_PATH, 'w') as f:
@@ -70,9 +90,6 @@ def _refresh_moments():
         json.dump(moments, f, indent=2)
 
 async def _bg_process_photo(file_path: str, job_id: str, context_type: str = None, context_id: str = None):
-    global PROCESS_LOCK
-    while PROCESS_LOCK: await asyncio.sleep(0.5)
-    PROCESS_LOCK = True
     try:
         UPLOAD_JOBS[job_id]["status"] = "syncing"
         _save_jobs()
@@ -81,6 +98,7 @@ async def _bg_process_photo(file_path: str, job_id: str, context_type: str = Non
         new_entry = next((i for i in syncer.index.image_catalog if i.file_path == file_path), None)
         if not new_entry:
             UPLOAD_JOBS[job_id]["status"] = "error"
+            UPLOAD_JOBS[job_id]["error"] = "Sync failed - could not find photo in catalog"
             _save_jobs()
             return
 
@@ -90,9 +108,10 @@ async def _bg_process_photo(file_path: str, job_id: str, context_type: str = Non
         
         found_names = []
         for asgn in new_entry.assignments:
-            pid = asgn.get("person_id")
+            pid = asgn.person_id
             if pid and pid in syncer.index.person_registry:
-                name = syncer.index.person_registry[pid].get("name")
+                person = syncer.index.person_registry[pid]
+                name = person.name
                 if name and not name.startswith("PERSON_"): found_names.append(name)
         UPLOAD_JOBS[job_id]["found_people"] = list(set(found_names))
 
@@ -119,8 +138,42 @@ async def _bg_process_photo(file_path: str, job_id: str, context_type: str = Non
         print(f"[BG Error] {e}")
         UPLOAD_JOBS[job_id]["status"] = "error"
         _save_jobs()
-    finally:
-        PROCESS_LOCK = False
+
+@app.post("/api/upload")
+async def upload_photo(
+    file: UploadFile = File(...), 
+    context_type: Optional[str] = Query(None), 
+    context_id: Optional[str] = Query(None)
+):
+    job_id = str(uuid.uuid4())
+    filename = file.filename
+    file_path = os.path.join(INPUT_DIR, filename)
+    
+    with open(file_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+    
+    UPLOAD_JOBS[job_id] = {
+        "job_id": job_id,
+        "file": filename,
+        "status": "queued",
+        "created_at": time.time()
+    }
+    _save_jobs()
+    
+    await UPLOAD_QUEUE.put({
+        'job_id': job_id, 
+        'file_path': file_path, 
+        'context_type': context_type, 
+        'context_id': context_id
+    })
+    
+    return {"job_id": job_id, "file": filename, "status": "queued"}
+
+@app.get("/api/upload/status/{job_id}")
+async def get_upload_status(job_id: str):
+    if job_id not in UPLOAD_JOBS:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return UPLOAD_JOBS[job_id]
 
 # === Request Models ===
 class RenameRequest(BaseModel):
@@ -130,6 +183,9 @@ class RenameRequest(BaseModel):
 class MomentRenameRequest(BaseModel):
     moment_id: str
     new_label: str
+
+class MomentDeleteRequest(BaseModel):
+    moment_id: str
 
 class DeletePersonRequest(BaseModel):
     person_id: str
@@ -166,22 +222,86 @@ async def get_index():
 
 @app.get("/api/photos")
 async def get_photos():
-    if not os.path.exists(INDEX_PATH): return []
-    with open(INDEX_PATH) as f: data = json.load(f)
-    # Add processing status to photos from UPLOAD_JOBS
+    # 1. Load ground truth from index.json
+    image_catalog = []
+    if os.path.exists(INDEX_PATH):
+        try:
+            with open(INDEX_PATH) as f: 
+                data = json.load(f)
+                image_catalog = data.get("image_catalog", [])
+        except: pass
+    
+    # 2. Build map of existing file paths for quick lookup
+    existing_paths = {p.get("file_path") for p in image_catalog if p.get("file_path")}
+    
+    # 3. Enrich existing photos with status
     processed_photos = []
-    for p in data.get("image_catalog", []):
-        job_id = None
-        for jid, job_info in UPLOAD_JOBS.items():
-            if job_info.get("file") == os.path.basename(p.get("file_path", "")):
-                job_id = jid
+    for p in image_catalog:
+        file_path = p.get("file_path", "")
+        filename = os.path.basename(file_path)
+        
+        # Find matching job
+        status = "done"
+        for jid, job in UPLOAD_JOBS.items():
+            if job.get("file") == filename:
+                status = job.get("status", "done")
                 break
-        processed_photos.append({"file_path": p.get("file_path", ""), "caption": p.get("caption", ""), 
-                                 "ai_desc": p.get("ai_desc", ""), "assignments": p.get("assignments", []),
-                                 "processing_status": UPLOAD_JOBS.get(job_id, {}).get("status", "done"), # Default to 'done' if no job found
-                                 "person_ids": list(set(a.get("person_id") for a in p.get("assignments", []) if a.get("person_id")))}
-        )
-    return processed_photos
+        
+        # Enrich assignments with bboxes for selective face cropping
+        face_map = {f.get("face_hash"): f.get("bbox") for f in p.get("detected_faces", [])}
+        enriched_assignments = []
+        for asgn in p.get("assignments", []):
+            enriched_assignments.append({
+                "person_id": asgn.get("person_id"),
+                "face_hash": asgn.get("face_hash"),
+                "bbox": face_map.get(asgn.get("face_hash"))
+            })
+
+        processed_photos.append({
+            "file_path": file_path, 
+            "analyzed_at": p.get("analyzed_at", ""),
+            "caption": p.get("caption", ""), 
+            "ai_desc": p.get("ai_desc", ""), 
+            "assignments": enriched_assignments,
+            "resolution": p.get("resolution"),
+            "processing_status": status,
+            "person_ids": list(set(a.get("person_id") for a in p.get("assignments", []) if a.get("person_id")))
+        })
+
+    # Sort processed photos by analyzed_at DESC
+    processed_photos.sort(key=lambda x: x.get("analyzed_at", "0000-00-00"), reverse=True)
+
+    # 4. Add "Ghost" photos (Jobs that haven't hit the index yet)
+    ghosts = []
+    for jid, job in UPLOAD_JOBS.items():
+        filename = job.get("file")
+        status = job.get("status")
+        full_path = os.path.join(INPUT_DIR, filename)
+        
+        if full_path not in existing_paths and status not in ["done", "error"]:
+            ghosts.append({
+                "file_path": full_path,
+                "analyzed_at": datetime.datetime.fromtimestamp(job.get("created_at", 0)).isoformat(),
+                "caption": "Processing...",
+                "ai_desc": "",
+                "assignments": [],
+                "processing_status": status,
+                "person_ids": [],
+                "is_ghost": True,
+                "context_type": job.get("context_type"),
+                "context_id": job.get("context_id")
+            })
+    
+    # Sort ghosts by creation time DESC
+    ghosts.sort(key=lambda x: x.get("analyzed_at", "0000-00-00"), reverse=True)
+            
+    return ghosts + processed_photos
+
+@app.get("/api/upload/active-jobs")
+async def get_active_jobs():
+    """Returns jobs that are not yet reached a terminal state."""
+    active = {jid: job for jid, job in UPLOAD_JOBS.items() if job.get("status") not in ["done", "error"]}
+    return active
 
 @app.get("/api/people")
 async def get_people():
@@ -275,7 +395,7 @@ async def rename_moment(req: MomentRenameRequest):
     return {"status": "ok"}
 
 @app.post("/api/moments/delete")
-async def delete_moment(req: MomentRenameRequest):
+async def delete_moment(req: MomentDeleteRequest):
     if not os.path.exists(MOMENTS_PATH): raise HTTPException(status_code=404, detail="No moments")
     with open(MOMENTS_PATH) as f: moments = json.load(f)
     moments = [m for m in moments if m.get('id') != req.moment_id]
@@ -310,18 +430,43 @@ async def move_photo(req: PhotoMoveRequest):
     dest = os.path.join(BASE_DIR, req.target_folder, os.path.basename(req.file_path))
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     if os.path.exists(req.file_path): shutil.move(req.file_path, dest)
+    
+    # 1. Update Index catalog
     with open(INDEX_PATH) as f: idx = json.load(f)
     for img in idx.get("image_catalog", []):
         if img["file_path"] == req.file_path: img["file_path"] = dest; break
     with open(INDEX_PATH, 'w') as f: json.dump(idx, f, indent=2)
+    
+    # 2. Update Moments albums
+    if os.path.exists(MOMENTS_PATH):
+        with open(MOMENTS_PATH) as f: moments = json.load(f)
+        for m in moments:
+            m["member_paths"] = [dest if p == req.file_path else p for p in m.get("member_paths", [])]
+            if m.get("cover_image") == req.file_path: m["cover_image"] = dest
+        with open(MOMENTS_PATH, 'w') as f: json.dump(moments, f, indent=2)
+        
     return {"status": "ok"}
 
 @app.post("/api/photos/delete")
 async def delete_photo(req: PhotoDeleteRequest):
+    # 1. Physical Delete
     if os.path.exists(req.file_path): os.remove(req.file_path)
+    
+    # 2. Update Index catalog
     with open(INDEX_PATH) as f: idx = json.load(f)
     idx["image_catalog"] = [img for img in idx["image_catalog"] if img["file_path"] != req.file_path]
     with open(INDEX_PATH, 'w') as f: json.dump(idx, f, indent=2)
+    
+    # 3. Update Moments albums
+    if os.path.exists(MOMENTS_PATH):
+        with open(MOMENTS_PATH) as f: moments = json.load(f)
+        for m in moments:
+            m["member_paths"] = [p for p in m.get("member_paths", []) if p != req.file_path]
+            m["count"] = len(m["member_paths"])
+            if m.get("cover_image") == req.file_path:
+                m["cover_image"] = m["member_paths"][0] if m["member_paths"] else ""
+        with open(MOMENTS_PATH, 'w') as f: json.dump(moments, f, indent=2)
+        
     return {"status": "ok"}
 
 

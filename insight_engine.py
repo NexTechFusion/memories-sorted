@@ -62,43 +62,42 @@ class MemoryIntelligence:
                     'icon': '👋'
                 })
 
-        # 3. Time Gap
-        timestamps = []
+        # 3. Relationship Discovery (Co-occurrence)
+        relationships = Counter()
         for img in data.get('image_catalog', []):
-            ts_str = img.get('analyzed_at', '')
-            if ts_str:
-                try:
-                    timestamps.append(datetime.fromisoformat(ts_str))
-                except:
-                    pass
+            pids = list(set(a.get('person_id') for a in img.get('assignments', []) if a.get('person_id')))
+            if len(pids) > 1:
+                pids.sort()
+                for i in range(len(pids)):
+                    for j in range(i + 1, len(pids)):
+                        relationships[(pids[i], pids[j])] += 1
         
-        if timestamps and len(timestamps) > 1:
-            timestamps.sort()
-            now = datetime.now()
-            gap = now - max(timestamps)
-            gap_display = f"{gap.days} days" if gap.days > 0 else f"{max(1, gap.seconds // 3600)} hours"
+        if relationships:
+            (p1, p2), count = relationships.most_common(1)[0]
+            n1 = data.get('person_registry', {}).get(p1, {}).get('name') or p1.replace('PERSON_', 'Person ')
+            n2 = data.get('person_registry', {}).get(p2, {}).get('name') or p2.replace('PERSON_', 'Person ')
             insights.append({
-                'type': 'status',
-                'title': 'Last Memory Captured',
-                'message': f"Your last photo was uploaded {gap_display} ago.\nYou have {len(timestamps)} photos in your library.",
-                'icon': '📸'
+                'type': 'relationship',
+                'title': 'Dynamic Duo',
+                'message': f"{n1} and {n2} are frequently captured together (seen in {count} photos).",
+                'icon': '👥'
             })
 
-        # 4. Captions Summary
-        captions = []
-        for img in data.get('image_catalog', []):
-            cap = img.get('data', {}).get('caption', '') or img.get('caption', '')
-            if cap and cap != 'N/A' and len(cap) > 5:
-                captions.append(cap)
-        
-        if captions:
-            unique = list(set(captions))[:3]
-            msg = "\n".join(f"• {c}" for c in unique)
+        # 4. Perspective (Quality/Aesthetics)
+        scores = [img.get('quality_score', 0) for img in data.get('image_catalog', []) if img.get('quality_score')]
+        if scores:
+            avg_score = sum(scores) / len(scores)
+            best_photos = sorted(data.get('image_catalog', []), key=lambda x: x.get('quality_score', 0), reverse=True)[:3]
+            highlights = []
+            for bp in best_photos:
+                cap = bp.get('caption') or os.path.basename(bp.get('file_path'))
+                highlights.append(f"• {cap}")
+            
             insights.append({
-                'type': 'stories',
-                'title': 'Recent Snapshots',
-                'message': msg,
-                'icon': '📝'
+                'type': 'quality',
+                'title': 'AI Highlights',
+                'message': f"Your library has an average aesthetic score of {avg_score:.1f}/10.\n\nTop curated shots:\n" + "\n".join(highlights),
+                'icon': '✨'
             })
 
         # 5. Total stats
@@ -110,6 +109,6 @@ class MemoryIntelligence:
             'icon': '🌍'
         })
 
-        # Sort: stories first, then status, favorite, reminder, stat
-        order = {'stories': 0, 'status': 1, 'favorite': 2, 'reminder': 3, 'stat': 4}
+        # Sort: relationships first, then quality, favorite, reminder, stat
+        order = {'relationship': 0, 'quality': 1, 'favorite': 2, 'reminder': 3, 'stat': 4}
         return sorted(insights, key=lambda x: order.get(x.get('type', ''), 5))
