@@ -113,8 +113,15 @@
                     <div class="bento-card p-5 rounded-3xl min-w-[300px] max-w-[300px] flex flex-col justify-between transition-all hover:border-blue-500/20">
                         <div>
                             <div class="flex items-center gap-3 mb-4">
-                                <div class="w-10 h-10 rounded-2xl bg-blue-500/10 flex items-center justify-center text-xl" x-text="insight.icon"></div>
-                                <h3 class="font-bold text-zinc-300" x-text="insight.title"></h3>
+                                <div class="w-12 h-12 rounded-2xl bg-blue-500/10 flex items-center justify-center text-xl overflow-hidden shadow-inner ring-1 ring-white/5">
+                                    <template x-if="insight.action && insight.action.type === 'person'">
+                                        <img :src="getLiftedUrl(insight.action.id)" class="w-full h-full object-contain drop-shadow-xl scale-110">
+                                    </template>
+                                    <template x-if="!insight.action || insight.action.type !== 'person'">
+                                        <span x-text="insight.icon"></span>
+                                    </template>
+                                </div>
+                                <h3 class="font-bold text-white tracking-tight" x-text="insight.title"></h3>
                             </div>
                             <p class="text-sm text-zinc-400 leading-relaxed whitespace-pre-line" x-html="renderInsightMessage(insight.message)"></p>
                         </div>
@@ -128,11 +135,18 @@
                 </h2>
                 <div class="flex gap-4 overflow-x-auto pb-4 -mx-6 px-6 scrollbar-none">
                     <template x-for="p in people.slice(0, 10)" :key="p.id">
-                        <button @click="openPerson(p)" class="flex-shrink-0 group">
+                        <button @click="openPerson(p)" class="flex-shrink-0 group w-16">
                             <div class="w-16 h-16 rounded-2xl overflow-hidden mb-2 bento-card relative">
+                                <!-- Background Fallback (Square Crop) -->
                                 <img :src="getAvatarSrc(p)"
                                      :style="getPersonStyle(p)"
-                                     class="w-full h-full object-cover">
+                                     class="w-full h-full object-cover opacity-20 blur-[2px]">
+                                <!-- Floating "Lifted" Subject -->
+                                <div class="absolute inset-0 flex items-center justify-center p-1">
+                                    <img :src="getLiftedUrl(p.id)" 
+                                         @error="$el.style.display='none'"
+                                         class="w-full h-full object-contain drop-shadow-[0_5px_5px_rgba(0,0,0,0.5)] scale-110 group-hover:scale-125 transition-transform duration-500">
+                                </div>
                                 <div class="absolute inset-x-0 bottom-0 bg-black/40 h-1/3 flex items-end justify-center pb-0.5">
                                     <span class="text-[8px] font-bold uppercase" x-text="p.count"></span>
                                 </div>
@@ -1211,6 +1225,10 @@
                     return msg.replace(/\[\[(person|photo):([^|\]]+)\|([^\]]+)\]\]/g, (match, type, id, label) => {
                         return `<span class="text-blue-400 underline cursor-pointer hover:text-blue-300 transition-colors" onclick="window.dispatchInsightAction('${type}', '${id}')">${label}</span>`;
                     });
+                },
+
+                getLiftedUrl(pId) {
+                    return `/api/lifted/${pId}`;
                 },
 
                 confirmAction(msg, action) {

@@ -78,6 +78,85 @@ async def upload_worker():
 async def startup_event():
     asyncio.create_task(upload_worker())
 
+from ultralytics import FastSAM
+import cv2
+import numpy as np
+
+# Subject Lift Cache
+LIFTED_DIR = os.path.join(DATA_DIR, "lifted")
+os.makedirs(LIFTED_DIR, exist_ok=True)
+
+class SubjectLifter:
+    def __init__(self):
+        self.model = None
+
+    def _ensure_model(self):
+        if self.model is None:
+            self.model = FastSAM("FastSAM-s.pt")
+
+    def lift(self, img_path, face_bbox):
+        self._ensure_model()
+        img = cv2.imread(img_path)
+        if img is None: return None
+        h, w = img.shape[:2]
+        
+        # Convert bbox [x1, y1, x2, y2] pixels to center point
+        x1, y1, x2, y2 = face_bbox
+        px, py = int(x1 + (x2-x1)/2), int(y1 + (y2-y1)/2)
+        
+        # Run FastSAM with point prompt
+        results = self.model.predict(img_path, bboxes=[[x1, y1, x2, y2]], points=[[px, py]], labels=[1], device="cpu", verbose=False)
+        
+        if not results or not results[0].masks: return None
+        
+        mask_data = results[0].masks.data[0].cpu().numpy()
+        mask = cv2.resize(mask_data, (w, h), interpolation=cv2.INTER_NEAREST).astype(bool)
+        
+        bgra = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
+        bgra[:, :, 3] = (mask * 255).astype(np.uint8)
+        
+        coords = np.argwhere(mask)
+        if len(coords) == 0: return None
+        y_min, x_min = coords.min(axis=0)
+        y_max, x_max = coords.max(axis=0)
+        return bgra[y_min:y_max, x_min:x_max]
+
+lifter = SubjectLifter()
+
+@app.get("/api/lifted/{person_id}")
+async def get_lifted_subject(person_id: str):
+    cache_path = os.path.join(LIFTED_DIR, f"{person_id}.png")
+    if os.path.exists(cache_path):
+        return FileResponse(cache_path)
+    
+    with open(INDEX_PATH) as f: index_data = json.load(f)
+    catalog = index_data.get('image_catalog', [])
+    
+    target_photo = None
+    target_face = None
+    
+    for item in catalog:
+        # Check assignments directly for the person
+        for assign in item.get('assignments', []):
+            if assign.get('person_id') == person_id:
+                # Find the face corresponding to this result hash/hash match
+                # For simplicity, we grab the first face if it's assigned
+                if item.get('detected_faces'):
+                    target_photo = item['file_path']
+                    target_face = item['detected_faces'][0]['bbox']
+                    break
+        if target_photo: break
+        
+    if not target_photo:
+        raise HTTPException(status_code=404, detail="Person not found")
+        
+    lifted_img = lifter.lift(target_photo, target_face)
+    if lifted_img is None:
+        raise HTTPException(status_code=500, detail="Segmentation failed")
+        
+    cv2.imwrite(cache_path, lifted_img)
+    return FileResponse(cache_path)
+
 def _refresh_insights():
     try:
         data = insight.generate_insights()
