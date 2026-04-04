@@ -79,9 +79,12 @@ async def startup_event():
     asyncio.create_task(upload_worker())
 
 def _refresh_insights():
-    data = insight.generate_insights()
-    with open(INSIGHTS_PATH, 'w') as f:
-        json.dump(data, f, indent=2)
+    try:
+        data = insight.generate_insights()
+        with open(INSIGHTS_PATH, 'w') as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        print(f"[ERROR] Insight generation failed: {e}")
 
 def _refresh_moments():
     catalog = [{"file_path": i.file_path, "analyzed_at": i.analyzed_at} for i in syncer.index.image_catalog]

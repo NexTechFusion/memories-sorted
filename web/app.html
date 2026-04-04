@@ -110,13 +110,13 @@
             <!-- AI Insights Carousel -->
             <div x-show="insights.length > 0" class="flex gap-4 overflow-x-auto pb-8 -mx-6 px-6 scrollbar-none">
                 <template x-for="insight in insights" :key="insight.type">
-                    <div class="bento-card p-5 rounded-3xl min-w-[300px] max-w-[300px] flex flex-col justify-between border-blue-500/5 transition-all hover:border-blue-500/20">
+                    <div class="bento-card p-5 rounded-3xl min-w-[300px] max-w-[300px] flex flex-col justify-between transition-all hover:border-blue-500/20">
                         <div>
                             <div class="flex items-center gap-3 mb-4">
                                 <div class="w-10 h-10 rounded-2xl bg-blue-500/10 flex items-center justify-center text-xl" x-text="insight.icon"></div>
                                 <h3 class="font-bold text-zinc-300" x-text="insight.title"></h3>
                             </div>
-                            <p class="text-sm text-zinc-400 leading-relaxed whitespace-pre-line" x-text="insight.message"></p>
+                            <p class="text-sm text-zinc-400 leading-relaxed whitespace-pre-line" x-html="renderInsightMessage(insight.message)"></p>
                         </div>
                     </div>
                 </template>
@@ -700,6 +700,12 @@
                 confirmAction: '',
 
                 async init() {
+                    // Global helper for rendered inline links
+                    window.dispatchInsightAction = (type, id) => {
+                        const app = document.querySelector('[x-data]').__x.$data;
+                        app.handleInsightAction({type: type, id: id, path: id});
+                    };
+
                     this.showOnboarding = !localStorage.getItem('zaiya_onboarded');
                     await this.refreshAll();
                     
@@ -1169,6 +1175,42 @@
                         return `/crop/${filename}?crop=${cx},${cy},${fw.toFixed(0)},${fh.toFixed(0)}&t=${Date.now()}`;
                     }
                     return person.avatarUrl;
+                },
+
+                handleInsightAction(action) {
+                    if (!action) return;
+
+                    switch (action.type) {
+                        case 'person':
+                            this.tab = 'people';
+                            const personToOpen = this.people.find(p => p.id === action.id);
+                            if (personToOpen) {
+                                this.openPerson(personToOpen);
+                            } else {
+                                this.flash('Person not found.', 'error');
+                            }
+                            break;
+                        case 'photo':
+                            const photoToOpen = this.allPhotos.find(p => p.file_path === action.path);
+                            if (photoToOpen) {
+                                const index = this.allPhotos.indexOf(photoToOpen);
+                                this.openLightbox(index, this.allPhotos);
+                            } else {
+                                this.flash('Photo not found.', 'error');
+                            }
+                            break;
+                        default:
+                            console.warn('Unknown insight action type:', action.type);
+                            break;
+                    }
+                },
+
+                renderInsightMessage(msg) {
+                    if (!msg) return '';
+                    // Pattern: [[type:id|Label]]
+                    return msg.replace(/\[\[(person|photo):([^|\]]+)\|([^\]]+)\]\]/g, (match, type, id, label) => {
+                        return `<span class="text-blue-400 underline cursor-pointer hover:text-blue-300 transition-colors" onclick="window.dispatchInsightAction('${type}', '${id}')">${label}</span>`;
+                    });
                 },
 
                 confirmAction(msg, action) {
