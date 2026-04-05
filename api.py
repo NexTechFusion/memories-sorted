@@ -64,6 +64,9 @@ class PhotoMoveRequest(BaseModel):
 class PhotoDeleteRequest(BaseModel):
     file_path: str
 
+class UndoRequest(BaseModel):
+    file_path: str
+
 class MomentCreateRequest(BaseModel):
     label: str
     photo_paths: List[str]
@@ -527,7 +530,7 @@ async def move_photo(req: PhotoMoveRequest):
             json.dump(data, f, indent=2)
     return {"status": "ok", "new_path": dest}
 
-TRASH_DIR = os.path.join(base_dir, "data/.trash")
+TRASH_DIR = os.path.join(BASE_DIR, "data/.trash")
 os.makedirs(TRASH_DIR, exist_ok=True)
 UNDO_TTL = 60  # seconds before permanent deletion
 
