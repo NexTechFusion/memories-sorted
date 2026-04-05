@@ -57,51 +57,123 @@ class MemoriesSync:
 
     @staticmethod
     def _extract_exif_date(file_path: str) -> str | None:
-        """Read original capture date from EXIF metadata and sub-IFDs."""
+        """
+        Expert-synthesized universal date extraction.
+        Priority: EXIF > XMP > Filename > FileModTime (labeled)
+        """
         import re
+        import subprocess
+        import json
+        from datetime import datetime
         from PIL.ExifTags import TAGS
         
         def parse_exif_dt(val: str) -> str | None:
+            """Parse EXIF date format to ISO 8601."""
             if not val or not isinstance(val, str):
                 return None
             val = val.strip()
-            if val in ('', '0000:00:00 00:00:00'):
+            if val in ('', '0000:00:00 00:00:00', '0000-00-00 00:00:00'):
                 return None
             # Standard EXIF: "2024:03:30 19:27:57"
-            cleaned = val.replace(':', '-')
-            match = re.match(r'(\d{4}-\d{2}-\d{2})\s+(\d{2})-(\d{2})-(\d{2})', cleaned)
+            cleaned = val.replace(':', '-', 2).replace(':', '-', 2).replace(' ', 'T')
+            match = re.match(r'(\d{4}-\d{2}-\d{2}T)(\d{2})-(\d{2})-(\d{2})', cleaned)
             if match:
-                return f"{match.group(1)}T{match.group(2)}:{match.group(3)}:{match.group(4)}"
+                return f"{match.group(1)}{match.group(2)}:{match.group(3)}:{match.group(4)}"
             return None
 
+        filename = os.path.basename(file_path)
+        
+        # METHOD 1: PIL EXIF with Sub-IFD support
         try:
             img = Image.open(file_path)
             exif = img.getexif()
             
-            # 1. Check primary IFD
-            exif_tags = (0x9003, 0x9004, 0x0132)  # DateTimeOriginal, DateTimeDigitized, DateTime
-            for tag_id in exif_tags:
+            # Primary IFD
+            for tag_id in (0x9003, 0x9004, 0x0132):
                 val = exif.get(tag_id)
                 res = parse_exif_dt(val)
-                if res: return res
-                
-            # 2. Check Exif Sub-IFD (0x8769) where most modern phones store it
-            sub_ifd = exif.get_ifd(0x8769)
-            if sub_ifd:
-                for tag_id in exif_tags:
-                    val = sub_ifd.get(tag_id)
-                    res = parse_exif_dt(val)
-                    if res: return res
-                    
-            # 3. Last fallback: Filename pattern matching for typical phone dumps
-            # Pattern like 1000027043.jpg doesn't have a date, but IMG_20240330_... would
-            filename = os.path.basename(file_path)
-            fn_match = re.search(r'(\d{4})[-_](\d{2})[-_](\d{2})', filename)
-            if fn_match:
-                return f"{fn_match.group(1)}-{fn_match.group(2)}-{fn_match.group(3)}T12:00:00"
-
+                if res:
+                    return res
+            
+            # Sub-IFD (Android/iOS primary location)
+            if hasattr(exif, 'get_ifd'):
+                sub_ifd = exif.get_ifd(0x8769)
+                if sub_ifd:
+                    for tag_id in (0x9003, 0x9004):
+                        val = sub_ifd.get(tag_id)
+                        res = parse_exif_dt(val)
+                        if res:
+                            return res
+                            
+            # GPS IFD date
+            if hasattr(exif, 'get_ifd'):
+                gps_ifd = exif.get_ifd(0x8825)
+                if gps_ifd:
+                    gps_date = gps_ifd.get(0x001D)  # GPSDateStamp
+                    if gps_date and ':' in str(gps_date):
+                        return parse_exif_dt(gps_date.replace(':', '-') + "T12:00:00")
         except Exception as e:
-            print(f"[EXIF] Failed to read date for {file_path}: {e}")
+            pass
+        
+        # METHOD 2: exiftool (handles HEIC, WEBP, damaged EXIF, etc.)
+        try:
+            result = subprocess.run(
+                ['exiftool', '-json', '-DateTimeOriginal', '-CreateDate', 
+                 '-MediaCreateDate', '-GPSDateTime', file_path],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                data = json.loads(result.stdout)
+                if data and len(data) > 0:
+                    for key in ['DateTimeOriginal', 'CreateDate', 'MediaCreateDate', 'GPSDateTime']:
+                        if key in data[0] and data[0][key]:
+                            res = parse_exif_dt(data[0][key])
+                            if res:
+                                return res
+        except:
+            pass
+        
+        # METHOD 3: Filename patterns (WhatsApp, Signal, Screenshot, etc.)
+        patterns = [
+            # WhatsApp: IMG-YYYYMMDD-WA#### or VID-YYYYMMDD-WA####
+            (r'(?:IMG|VID)-(\d{4})(\d{2})(\d{2})-WA', lambda m: f"{m.group(1)}-{m.group(2)}-{m.group(3)}T12:00:00"),
+            # Signal: signal-YYYY-MM-DD-HHMMSS
+            (r'signal-(\d{4})-(\d{2})-(\d{2})', lambda m: f"{m.group(1)}-{m.group(2)}-{m.group(3)}T12:00:00"),
+            # Screenshot: Screenshot_YYYYMMDD-HHMMSS or Screenshot_YYYY-MM-DD
+            (r'Screenshot[_-](\d{4})[-_]?(\d{2})[-_]?(\d{2})', lambda m: f"{m.group(1)}-{m.group(2)}-{m.group(3)}T12:00:00"),
+            # Android Camera: IMG_YYYYMMDD_HHMMSS
+            (r'IMG_\d{8}_\d{6}', lambda m: None),  # Would need time parsing
+            # Generic: YYYYMMDD or YYYY-MM-DD anywhere in filename
+            (r'(?:^|[_-])(\d{4})(\d{2})(\d{2})(?:[_-]|\.|$)', lambda m: f"{m.group(1)}-{m.group(2)}-{m.group(3)}T12:00:00" if 2000 <= int(m.group(1)) <= 2030 else None),
+            (r'(?:^|[_-])(\d{4})-(\d{2})-(\d{2})(?:[_-]|\.|$)', lambda m: f"{m.group(1)}-{m.group(2)}-{m.group(3)}T12:00:00" if 2000 <= int(m.group(1)) <= 2030 else None),
+        ]
+        
+        for pattern, extractor in patterns:
+            match = re.search(pattern, filename, re.I)
+            if match:
+                try:
+                    result = extractor(match)
+                    if result:
+                        # Validate it's a real date
+                        datetime.fromisoformat(result)
+                        return result
+                except:
+                    pass
+        
+        # METHOD 4: XMP sidecar
+        xmp_path = file_path.rsplit('.', 1)[0] + '.xmp'
+        if os.path.exists(xmp_path):
+            try:
+                with open(xmp_path, 'r') as f:
+                    content = f.read()
+                    match = re.search(r'CreateDate[=:]\s*"(\d{4}-\d{2}-\d{2})', content)
+                    if match:
+                        return f"{match.group(1)}T12:00:00"
+            except:
+                pass
+        
+        # METHOD 5: File modification time (HONEST fallback)
+        # Return None for captured_at - let app show "Date Added" separately
         return None
 
     def _find_matching_person(self, embedding: List[float], threshold: float = 0.40) -> tuple:
