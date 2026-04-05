@@ -527,20 +527,76 @@ async def move_photo(req: PhotoMoveRequest):
             json.dump(data, f, indent=2)
     return {"status": "ok", "new_path": dest}
 
+TRASH_DIR = os.path.join(base_dir, "data/.trash")
+os.makedirs(TRASH_DIR, exist_ok=True)
+UNDO_TTL = 60  # seconds before permanent deletion
+
+# Undo queue: {file_path: {"expires_at": timestamp, ...}}
+_undo_queue = {}
+
+@app.post("/api/photo/undo")
+async def undo_delete(req: UndoRequest):
+    """Restore a recently deleted photo from trash."""
+    entry = _undo_queue.get(req.file_path)
+    if not entry:
+        return {"status": "error", "message": "No undo entry found"}
+    trash_file = entry.get("trash_path")
+    if trash_file and os.path.exists(trash_file):
+        original = entry["file_path"]
+        os.replace(trash_file, original)
+        if os.path.exists(INDEX_PATH):
+            with open(INDEX_PATH) as f:
+                data = json.load(f)
+            data["image_catalog"].append(entry["index_entry"])
+            with open(INDEX_PATH, 'w') as f:
+                json.dump(data, f, indent=2)
+        _undo_queue.pop(req.file_path, None)
+        _refresh_insights()
+        _refresh_moments()
+        return {"status": "ok", "file_path": original}
+    return {"status": "error", "message": "File expired or already cleaned"}
+
+def _cleanup_expired_undos():
+    """Remove files from trash whose undo window has expired."""
+    now = time.time()
+    expired = [fp for fp, entry in _undo_queue.items() if now > entry.get("expires_at", 0)]
+    for fp in expired:
+        entry = _undo_queue[fp]
+        trash_file = entry.get("trash_path")
+        if trash_file and os.path.exists(trash_file):
+            os.remove(trash_file)
+        _undo_queue.pop(fp, None)
+
 @app.post("/api/photo/delete")
 async def delete_photo(req: PhotoDeleteRequest):
-    """Delete a photo file and remove from index."""
-    if os.path.exists(req.file_path):
-        os.remove(req.file_path)
+    """Soft-delete: move to trash with 60s undo window."""
+    if not os.path.exists(req.file_path):
+        return {"status": "error", "message": "File not found"}
+    fname = os.path.basename(req.file_path)
+    trash_file = os.path.join(TRASH_DIR, f"{int(time.time())}_{fname}")
+    # Save index entry for restoration
+    index_entry = None
     if os.path.exists(INDEX_PATH):
         with open(INDEX_PATH) as f:
             data = json.load(f)
-        data["image_catalog"] = [p for p in data.get("image_catalog", []) if p.get("file_path") != req.file_path]
+        for i, p in enumerate(data.get("image_catalog", [])):
+            if p.get("file_path") == req.file_path:
+                index_entry = p
+                data["image_catalog"].pop(i)
+                break
         with open(INDEX_PATH, 'w') as f:
             json.dump(data, f, indent=2)
+    os.replace(req.file_path, trash_file)
+    _undo_queue[req.file_path] = {
+        "expires_at": time.time() + UNDO_TTL,
+        "trash_path": trash_file,
+        "index_entry": index_entry,
+        "file_path": req.file_path
+    }
+    _cleanup_expired_undos()
     _refresh_insights()
     _refresh_moments()
-    return {"status": "ok", "file_path": req.file_path}
+    return {"status": "ok", "file_path": req.file_path, "undo_until": time.time() + UNDO_TTL}
 
 @app.post("/api/moment/create")
 async def create_moment(req: MomentCreateRequest):
