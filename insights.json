@@ -8,42 +8,38 @@
   {
     "type": "favorite",
     "title": "Most Photographed",
-    "message": "Liam baby appears in 3 face detections.\n\nTop people: Liam baby: 3, Paul: 1, Bunu: 1, Person 545BAF25: 1, Person DDB0CF08: 1",
+    "message": "Paul appears in 6 face detections.\n\nTop people: Paul: 6, Liam baby: 4, Person 70505968: 2, Person CADECBA6: 2, Bunu: 1",
     "icon": "\ud83c\udfc6",
     "action": {
       "type": "person",
-      "id": "PERSON_BD01C367"
+      "id": "PERSON_7F68A3D1"
     }
   },
   {
     "type": "reminder",
     "title": "People Seen Only Once",
-    "message": "You only caught PERSON_7F68A3D1, PERSON_511F653F, PERSON_545BAF25, PERSON_DDB0CF08, PERSON_70505968, PERSON_525AA427 once. Maybe it is time for a reunion?",
+    "message": "You only caught PERSON_511F653F, PERSON_545BAF25, PERSON_DDB0CF08, PERSON_525AA427, PERSON_5EA5827D, PERSON_36D41DAE once. Maybe it is time for a reunion?",
     "icon": "\ud83d\udc4b"
   },
   {
     "type": "stat",
     "title": "Your World in Numbers",
-    "message": "7 unique faces. 7 photos captured.",
+    "message": "10 unique faces. 17 photos captured.",
     "icon": "\ud83c\udf0d"
   },
   {
     "type": "seasonal",
-    "title": "\ud83c\udf38 Spring 2026",
-    "message": "7 photos with 7 people. Your quiet season.",
+    "title": "\ud83c\udf38 Spring 2025",
+    "message": "3 photos with 2 people. Your quiet season from 2025.",
     "icon": "\ud83c\udf38",
     "data": {
       "photos": [
-        "/root/memories-sorted/data/input/1000052374.jpg",
-        "/root/memories-sorted/data/input/1000052369.jpg",
-        "/root/memories-sorted/data/input/1000052351.jpg",
-        "/root/memories-sorted/data/input/1000052277.jpg",
-        "/root/memories-sorted/data/input/1000052293.jpg",
-        "/root/memories-sorted/data/input/1000052013.jpg",
-        "/root/memories-sorted/data/input/1000052132.jpg"
+        "/root/memories-sorted/data/input/1000036515.jpg",
+        "/root/memories-sorted/data/input/1000036441.jpg",
+        "/root/memories-sorted/data/input/1000036629.jpg"
       ],
-      "season": "spring",
-      "year": 2026
+      "season": "Spring",
+      "year": 2025
     }
   }
 ]

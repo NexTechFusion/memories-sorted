@@ -212,7 +212,7 @@
                 <template x-for="yg in photoGroups" :key="'year-' + yg.year">
                     <div class="mb-8">
                         <h3 class="text-2xl font-black text-zinc-300 mb-4 flex items-center gap-3">
-                            <span x-text="yg.year"></span>
+                            <span x-text="yg.year || 'Unknown Date'"></span>
                             <span class="text-sm font-bold text-zinc-600" x-text="yg.totalPhotos + ' photos'"></span>
                             <div class="flex-1 h-px bg-zinc-800 ml-2"></div>
                         </h3>
@@ -225,7 +225,7 @@
                                         <div @click="selectionMode ? toggleSelection(p.file_path) : openLightboxFromAll(p.file_path)" 
                                              class="aspect-square rounded-xl overflow-hidden bento-card active:scale-95 transition-all relative border-2"
                                              :class="selectedItems.includes(p.file_path) ? 'border-blue-500 scale-95' : 'border-transparent'">
-                                            <img :src="'/images/' + p.file_path.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover">
+                                            <img :src="'/images/' + p.file_path.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover" @error="this.style.display='none'; this.parentElement.innerHTML='<div class=\'w-full h-full flex items-center justify-center bg-zinc-800\'><span class=\'text-zinc-600 text-lg\'>🧩</span></div>'">
                                             <!-- Date badge on hover -->
                                             <div class="absolute inset-0 bg-black/0 hover:bg-black/40 transition-colors flex items-end p-1.5 opacity-0 hover:opacity-100">
                                                 <span class="text-[9px] font-bold text-white" x-text="formatPhotoDate(p)"></span>
@@ -805,7 +805,7 @@
                 lastUploadedFiles: null, // For retry functionality
                 uploadPreview: null, // For single-file preview
                 
-                // Onboarding
+                // Onboarding - disabled by default
                 showOnboarding: false,
                 onboardingStep: 1,
                 
@@ -875,7 +875,8 @@
                         app.handleInsightAction({type: type, id: id, path: id});
                     };
 
-                    this.showOnboarding = !localStorage.getItem('zaiya_onboarded');
+                    // Onboarding disabled
+                    // this.showOnboarding = !localStorage.getItem('zaiya_onboarded');
                     await this.refreshAll();
                     
                     // Recover active upload jobs on refresh
@@ -1424,8 +1425,8 @@
                 },
 
                 formatPhotoDate(p) {
-                    const cap = p.captured_at || p.analyzed_at;
-                    if (!cap) return '';
+                    const cap = p.captured_at;
+                    if (!cap) return 'Unknown';
                     try {
                         const d = new Date(cap);
                         return d.toLocaleDateString('de-DE', { day: 'numeric', month: 'short' });
@@ -1436,10 +1437,15 @@
                     const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
                                        'July', 'August', 'September', 'October', 'November', 'December'];
                     const years = {};
+                    const noDatePhotos = [];
                     
                     for (const photo of this.allPhotos) {
-                        const cap = photo.captured_at || photo.analyzed_at;
-                        if (!cap) continue;
+                        // Only use captured_at (EXIF) — never fall back to analyzed_at
+                        const cap = photo.captured_at;
+                        if (!cap) {
+                            noDatePhotos.push(photo);
+                            continue;
+                        }
                         try {
                             const d = new Date(cap);
                             const year = d.getFullYear();
@@ -1459,6 +1465,15 @@
                             ...yg,
                             months: Object.values(yg.months).sort((a, b) => monthNames.indexOf(a.label) - monthNames.indexOf(b.label))
                         }));
+                    
+                    // Append no-date photos as a final "Unknown" group
+                    if (noDatePhotos.length > 0) {
+                        this.photoGroups.push({
+                            year: null,
+                            totalPhotos: noDatePhotos.length,
+                            months: [{ label: '📎 No Date', photos: noDatePhotos }]
+                        });
+                    }
                 },
 
                 async lbSaveCaption() {
