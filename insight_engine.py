@@ -35,28 +35,28 @@ class MemoryIntelligence:
             person_counts[pid] = pinfo.get('face_count', 0)
         
         if person_counts:
-            top_pid, top_count = max(person_counts.items(), key=lambda x: x[1])
-            pinfo = data.get('person_registry', {}).get(top_pid, {})
-            top_name = pinfo.get('name') or top_pid.replace('PERSON_', 'Person ')
+            items = list(person_counts.items())
+            if items:
+                top_pid, top_count = max(items, key=lambda x: x[1])
+                pinfo = data.get('person_registry', {}).get(top_pid, {})
+                top_name = pinfo.get('name') or top_pid.replace('PERSON_', 'Person ')
+                
+                msg = f"{top_name} appears in {top_count} face detections."
+                top_others = sorted(person_counts.items(), key=lambda x: -x[1])[:5]
+                others_list = []
+                for opid, ocount in top_others:
+                    oname = data.get('person_registry', {}).get(opid, {}).get('name') or opid.replace('PERSON_', 'Person ')
+                    others_list.append(f"{oname}: {ocount}")
+                
+                msg += f"\n\nTop people: {', '.join(others_list)}"
+                insights.append({
+                    'type': 'favorite',
+                    'title': 'Most Photographed',
+                    'message': msg,
+                    'icon': '🏆',
+                    'action': {'type': 'person', 'id': top_pid}
+                })
             
-            msg = f"{top_name} appears in {top_count} face detections."
-            top_others = sorted(person_counts.items(), key=lambda x: -x[1])[:5]
-            others_list = []
-            for opid, ocount in top_others:
-                oname = data.get('person_registry', {}).get(opid, {}).get('name') or opid.replace('PERSON_', 'Person ')
-                others_list.append(f"{oname}: {ocount}")
-            
-            msg += f"\n\nTop people: {', '.join(others_list)}"
-            insights.append({
-                'type': 'favorite',
-                'title': 'Most Photographed',
-                'message': msg,
-                'icon': '🏆',
-                'action': {'type': 'person', 'id': top_pid}
-            })
-            
-            # 2. Singletons (Keep simple for now)
-            # ...
             singletons = [n for n, c in person_counts.items() if c <= 1]
             if singletons and len(singletons) < 10:
                 insights.append({
@@ -66,7 +66,7 @@ class MemoryIntelligence:
                     'icon': '👋'
                 })
 
-        # 3. Relationship Discovery (Co-occurrence)
+        # 2. Relationship Discovery (Co-occurrence)
         relationships = Counter()
         for img in data.get('image_catalog', []):
             pids = list(set(a.get('person_id') for a in img.get('assignments', []) if a.get('person_id')))
@@ -87,7 +87,7 @@ class MemoryIntelligence:
                 'icon': '👥'
             })
 
-        # 4. Total stats
+        # 3. Total stats
         total_p = len(data.get('person_registry', {}))
         insights.append({
             'type': 'stat',
@@ -96,23 +96,20 @@ class MemoryIntelligence:
             'icon': '🌍'
         })
 
-        # 5. 🔥 On This Day (Memory Flashbacks)
+        # 4. 🔥 On This Day (Memory Flashbacks)
         import datetime
         today = datetime.date.today()
         
-        # Use captured_at from EXIF or fall back to analyzed_at
+        # USE ONLY captured_at (EXIF). fallback to analyzed_at makes everything look like "Spring 2026"
         photos_by_date = {}
         for img in data.get('image_catalog', []):
             cap = img.get('captured_at')
             if not cap:
-                cap = img.get('analyzed_at')
-            if not cap:
                 continue
             try:
-                # Handle both "2024-03-30T19:27:57" and "2024-03-30 19:27:57"
                 dt = datetime.datetime.fromisoformat(cap.replace('Z', '+00:00'))
                 d = dt.date()
-                if d.month == today.month and d.day == today.day and d.year != today.year:
+                if d.month == today.month and d.day == today.day and d.year < today.year:
                     years_ago = today.year - d.year
                     if years_ago not in photos_by_date:
                         photos_by_date[years_ago] = []
@@ -140,37 +137,43 @@ class MemoryIntelligence:
                 }
             })
 
-        # 6. 🍂 Seasonal Intelligence
-        seasons = {'spring': [], 'summer': [], 'autumn': [], 'winter': []}
+        # 5. 🍂 Seasonal Intelligence
         season_months = {
-            'spring': (3, 4, 5), 'summer': (6, 7, 8),
-            'autumn': (9, 10, 11), 'winter': (12, 1, 2)
+            'Spring': (3, 4, 5), 'Summer': (6, 7, 8),
+            'Autumn': (9, 10, 11), 'Winter': (12, 1, 2)
         }
         season_names = {
-            'spring': '🌸 Spring', 'summer': '☀️ Summer',
-            'autumn': '🍂 Autumn', 'winter': '❄️ Winter'
+            'Spring': '🌸 Spring', 'Summer': '☀️ Summer',
+            'Autumn': '🍂 Autumn', 'Winter': '❄️ Winter'
         }
         season_years = {}
         
         for img in data.get('image_catalog', []):
-            cap = img.get('captured_at') or img.get('analyzed_at')
+            # ONLY use EXIF captured_at for seasonal history. Fallback to analyzed_at (today) hallucinate 2026.
+            cap = img.get('captured_at')
             if not cap:
                 continue
             try:
                 dt = datetime.datetime.fromisoformat(cap.replace('Z', '+00:00'))
                 month = dt.month
+                year = dt.year
                 
-                for season_name, months in season_months.items():
-                    if month in months:
-                        year = dt.year
-                        # December/January/February belong to previous or current year
-                        if month in (12,):
-                            year = dt.year
-                        elif month in (1, 2):
-                            year = dt.year - 1
-                        key = f"{season_name}_{year}"
+                # Winter logic: Dec is start of season for following year
+                for s_name, s_months in season_months.items():
+                    if month in s_months:
+                        # Correct winter year label (Dec 23 is Winter 24)
+                        if month == 12:
+                            lab_year = year + 1
+                        else:
+                            lab_year = year
+                            
+                        # Ignore current year seasons to avoid 2026 hallucination
+                        if lab_year >= today.year:
+                            continue
+                            
+                        key = f"{s_name}_{lab_year}"
                         if key not in season_years:
-                            season_years[key] = {'season': season_name, 'year': year, 'photos': [], 'people': set()}
+                            season_years[key] = {'season': s_name, 'year': lab_year, 'photos': [], 'people': set()}
                         season_years[key]['photos'].append(img)
                         for a in img.get('assignments', []):
                             if a.get('person_id'):
@@ -179,10 +182,10 @@ class MemoryIntelligence:
             except:
                 continue
         
-        # Show most recent completed season with photos
         if season_years:
-            # Sort by year then season
-            sorted_seasons = sorted(season_years.items(), key=lambda x: (x[1]['year'], list(season_months.keys()).index(x[1]['season'])), reverse=True)
+            # Sort by year then season index
+            s_order = ['Winter', 'Spring', 'Summer', 'Autumn']
+            sorted_seasons = sorted(season_years.items(), key=lambda x: (x[1]['year'], s_order.index(x[1]['season'])), reverse=True)
             best_key, best_data = sorted_seasons[0]
             photo_count = len(best_data['photos'])
             people_count = len(best_data['people'])
@@ -191,7 +194,7 @@ class MemoryIntelligence:
             insights.append({
                 'type': 'seasonal',
                 'title': f'{season_label} {year}',
-                'message': f"{photo_count} photos with {people_count} people. Your {'busiest' if photo_count > 10 else 'quiet'} season.",
+                'message': f"{photo_count} photos with {people_count} people. Your {'busiest' if photo_count > 10 else 'quiet'} season from {year}.",
                 'icon': season_names[best_data['season']].split()[0],
                 'data': {
                     'photos': [img.get('file_path') for img in best_data['photos'][:12]],
@@ -200,6 +203,5 @@ class MemoryIntelligence:
                 }
             })
 
-        # Sort: relationships first, then favorite, reminder, stat, memory_flashback, seasonal
         order = {'relationship': 0, 'favorite': 1, 'reminder': 2, 'stat': 3, 'memory_flashback': 4, 'seasonal': 5}
         return sorted(insights, key=lambda x: order.get(x.get('type', ''), 5))

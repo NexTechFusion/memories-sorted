@@ -57,21 +57,49 @@ class MemoriesSync:
 
     @staticmethod
     def _extract_exif_date(file_path: str) -> str | None:
-        """Read original capture date from EXIF metadata."""
+        """Read original capture date from EXIF metadata and sub-IFDs."""
         import re
+        from PIL.ExifTags import TAGS
+        
+        def parse_exif_dt(val: str) -> str | None:
+            if not val or not isinstance(val, str):
+                return None
+            val = val.strip()
+            if val in ('', '0000:00:00 00:00:00'):
+                return None
+            # Standard EXIF: "2024:03:30 19:27:57"
+            cleaned = val.replace(':', '-')
+            match = re.match(r'(\d{4}-\d{2}-\d{2})\s+(\d{2})-(\d{2})-(\d{2})', cleaned)
+            if match:
+                return f"{match.group(1)}T{match.group(2)}:{match.group(3)}:{match.group(4)}"
+            return None
+
         try:
             img = Image.open(file_path)
             exif = img.getexif()
+            
+            # 1. Check primary IFD
             exif_tags = (0x9003, 0x9004, 0x0132)  # DateTimeOriginal, DateTimeDigitized, DateTime
             for tag_id in exif_tags:
                 val = exif.get(tag_id)
-                if val and isinstance(val, str) and val.strip() not in ('', '0000:00:00 00:00:00'):
-                    # EXIF format: "2024:03:30 19:27:57" — replace ALL colons with dashes then fix time
-                    cleaned = val.strip().replace(':', '-')
-                    # Now: "2024-03-30 19-27-57" — fix back to "2024-03-30T19:27:57"
-                    match = re.match(r'(\d{4}-\d{2}-\d{2})\s+(\d{2})-(\d{2})-(\d{2})', cleaned)
-                    if match:
-                        return f"{match.group(1)}T{match.group(2)}:{match.group(3)}:{match.group(4)}"
+                res = parse_exif_dt(val)
+                if res: return res
+                
+            # 2. Check Exif Sub-IFD (0x8769) where most modern phones store it
+            sub_ifd = exif.get_ifd(0x8769)
+            if sub_ifd:
+                for tag_id in exif_tags:
+                    val = sub_ifd.get(tag_id)
+                    res = parse_exif_dt(val)
+                    if res: return res
+                    
+            # 3. Last fallback: Filename pattern matching for typical phone dumps
+            # Pattern like 1000027043.jpg doesn't have a date, but IMG_20240330_... would
+            filename = os.path.basename(file_path)
+            fn_match = re.search(r'(\d{4})[-_](\d{2})[-_](\d{2})', filename)
+            if fn_match:
+                return f"{fn_match.group(1)}-{fn_match.group(2)}-{fn_match.group(3)}T12:00:00"
+
         except Exception as e:
             print(f"[EXIF] Failed to read date for {file_path}: {e}")
         return None
@@ -94,12 +122,27 @@ class MemoriesSync:
         
         return None, best_conf
 
-    def sync(self):
-        """Scan input directory, process new images."""
-        self.index = self._load_index()  # Ensure index is fresh before starting
+    def sync(self, fix_metadata: bool = False):
+        """Scan input directory, process new images or fix existing metadata."""
+        self.index = self._load_index()
         cataloged_paths = {item.file_path for item in self.index.image_catalog}
         processed = 0
-        
+        fixed = 0
+
+        # Pass 1: Fix missing metadata for already cataloged items
+        if fix_metadata:
+            print("[Sync] Scanning for missing EXIF metadata in catalog...")
+            for item in self.index.image_catalog:
+                if not item.captured_at or item.captured_at == "":
+                    new_date = self._extract_exif_date(item.file_path)
+                    if new_date:
+                        item.captured_at = new_date
+                        fixed += 1
+            if fixed > 0:
+                print(f"[Sync] Fixed EXIF for {fixed} existing photo(s).")
+                self._save_index()
+
+        # Pass 2: Process new images
         for filename in os.listdir(self.input_dir):
             if not filename.lower().endswith((".png", ".jpg", ".jpeg", ".heic", ".webp")):
                 continue
@@ -293,4 +336,4 @@ if __name__ == "__main__":
         syncer.index.person_registry = {}
         syncer._save_index()
     
-    syncer.sync()
+    syncer.sync(fix_metadata=("--metadata" in sys.argv or "--force-metadata" in sys.argv))
