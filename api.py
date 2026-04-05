@@ -305,11 +305,16 @@ async def get_photos():
         processed_photos.append({
             "file_path": file_path, 
             "analyzed_at": p.get("analyzed_at", ""),
+            "captured_at": p.get("captured_at"),
             "caption": p.get("caption", ""), 
             "processing_status": status,
             "person_ids": list(set(a.get("person_id") for a in p.get("assignments", []) if a.get("person_id")))
         })
-    processed_photos.sort(key=lambda x: x.get("analyzed_at", "0000-00-00"), reverse=True)
+    # Sort by captured_at (EXIF), fall back to analyzed_at if no EXIF
+    def sort_key(p):
+        cap = p.get("captured_at") or p.get("analyzed_at", "0000-00-00")
+        return cap
+    processed_photos.sort(key=sort_key, reverse=True)
     return processed_photos
 
 @app.get("/api/people")
@@ -337,6 +342,30 @@ async def get_people():
 @app.get("/api/upload/active-jobs")
 async def get_active_jobs():
     return {jid: job for jid, job in UPLOAD_JOBS.items() if job.get("status") not in ["done", "error"]}
+
+@app.get("/api/search")
+async def search_photos(query: str = Query(..., min_length=1), limit: int = Query(20, ge=1, le=200)):
+    """Semantic search using CLIP embeddings."""
+    results = clip_engine.search(query, top_k=limit)
+    # Build full photo objects with captured_at
+    photos = []
+    if not os.path.exists(INDEX_PATH):
+        return {"query": query, "results": []}
+    with open(INDEX_PATH) as f:
+        data = json.load(f)
+    catalog = {p["file_path"]: p for p in data.get("image_catalog", [])}
+    for file_path, score in results:
+        entry = catalog.get(file_path, {})
+        person_ids = list(set(a.get("person_id") for a in entry.get("assignments", []) if a.get("person_id")))
+        photos.append({
+            "file_path": file_path,
+            "score": round(score, 3),
+            "analyzed_at": entry.get("analyzed_at", ""),
+            "captured_at": entry.get("captured_at"),
+            "caption": entry.get("caption", ""),
+            "person_ids": person_ids
+        })
+    return {"query": query, "count": len(photos), "results": photos}
 
 @app.get("/api/folders")
 async def get_folders():
