@@ -87,25 +87,7 @@ class MemoryIntelligence:
                 'icon': '👥'
             })
 
-        # 4. Perspective (Quality/Aesthetics)
-        scores = [img.get('quality_score', 0) for img in data.get('image_catalog', []) if img.get('quality_score')]
-        if scores:
-            avg_score = sum(scores) / len(scores)
-            best_photos = sorted(data.get('image_catalog', []), key=lambda x: x.get('quality_score') if x.get('quality_score') is not None else 0, reverse=True)[:3]
-            highlights = []
-            for bp in best_photos:
-                cap = bp.get('caption') or os.path.basename(bp.get('file_path'))
-                fp = bp.get('file_path')
-                highlights.append(f"• [[photo:{fp}|{cap}]]")
-            
-            insights.append({
-                'type': 'quality',
-                'title': 'AI Highlights',
-                'message': f"Your library has an average aesthetic score of {avg_score:.1f}/10.\n\nTop curated shots:\n" + "\n".join(highlights),
-                'icon': '✨'
-            })
-
-        # 5. Total stats
+        # 4. Total stats
         total_p = len(data.get('person_registry', {}))
         insights.append({
             'type': 'stat',
@@ -114,6 +96,6 @@ class MemoryIntelligence:
             'icon': '🌍'
         })
 
-        # Sort: relationships first, then quality, favorite, reminder, stat
-        order = {'relationship': 0, 'quality': 1, 'favorite': 2, 'reminder': 3, 'stat': 4}
+        # Sort: relationships first, then favorite, reminder, stat
+        order = {'relationship': 0, 'favorite': 1, 'reminder': 2, 'stat': 3}
         return sorted(insights, key=lambda x: order.get(x.get('type', ''), 5))

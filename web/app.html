@@ -257,10 +257,17 @@
                          @contextmenu.prevent="openPersonMenu(p, $event)"
                          class="bento-card p-3 rounded-[24px] flex flex-col items-center text-center relative group cursor-pointer border-2 transition-all duration-300"
                          :class="selectedItems.includes(p.avatar) ? 'border-blue-500 scale-95' : 'border-transparent'">
-                        <div class="w-full aspect-square rounded-[20px] overflow-hidden mb-3">
+                        <div class="w-full aspect-square rounded-[20px] overflow-hidden mb-3 relative bg-zinc-800">
+                            <!-- Background Fallback -->
                             <img :src="getAvatarSrc(p)"
                                  :style="getPersonStyle(p)"
-                                 class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500">
+                                 class="w-full h-full object-cover opacity-20 blur-[2px]">
+                            <!-- Floating Premium Portrait -->
+                            <div class="absolute inset-0 flex items-center justify-center p-2">
+                                <img :src="getLiftedUrl(p.id)" 
+                                     @error="$el.style.display='none'"
+                                     class="w-full h-full object-contain drop-shadow-[0_8px_8px_rgba(0,0,0,0.4)] transition-transform duration-500 group-hover:scale-110">
+                            </div>
                         </div>
                         <h4 class="text-sm font-bold text-white mb-0.5 truncate w-full" x-text="p.display || 'Person'"></h4>
                         <p class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest" x-text="p.count + ' Photos'"></p>
@@ -378,8 +385,8 @@
                             <div class="flex flex-wrap gap-3">
                                 <template x-for="pInfo in getLbPeople()" :key="pInfo.id">
                                     <button @click="lbOpen = false; openPerson(pInfo)" class="flex items-center gap-2 bg-white/5 pr-3 pl-1 py-1 rounded-full border border-white/5 hover:bg-white/10 active:scale-95 transition-all">
-                                        <div class="w-8 h-8 rounded-full overflow-hidden bento-card bg-zinc-800">
-                                            <img :src="getLbFaceCrop(pInfo)" class="w-full h-full object-cover">
+                                        <div class="w-8 h-8 rounded-full overflow-hidden bento-card bg-zinc-800 relative">
+                                            <img :src="getLiftedUrl(pInfo.id)" class="w-full h-full object-cover">
                                         </div>
                                         <span class="text-xs font-bold text-zinc-300" x-text="pInfo.display || 'User'"></span>
                                     </button>
@@ -1228,7 +1235,7 @@
                 },
 
                 getLiftedUrl(pId) {
-                    return `/api/lifted/${pId}`;
+                    return `/api/crop/premium/${pId}`;
                 },
 
                 confirmAction(msg, action) {

@@ -1,28 +1,30 @@
 """
 Memories Sorted AI — Phase 1.5 Intelligence Engine API
 """
-from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks, Query
+from fastapi import FastAPI, HTTPException, UploadFile, File, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional
-import os, json, shutil, time, uuid, asyncio, hashlib
+import os, json, shutil, time, uuid, asyncio, hashlib, datetime, io
+from PIL import Image
 
 # --- Core Engine Imports ---
 from sync import MemoriesSync
 from clip_engine import ClipSearchEngine
-from quality_engine import QualityScorer
 from insight_engine import MemoryIntelligence
 from moments_engine import MomentsEngine
 import caption_engine  
 
 # --- Configuration ---
 BASE_DIR = "/root/memories-sorted"
+DATA_DIR = os.path.join(BASE_DIR, "data")
 INDEX_PATH = os.path.join(BASE_DIR, "index.json")
 INPUT_DIR = os.path.join(BASE_DIR, "data/input")
 CACHE_DIR = os.path.join(BASE_DIR, "data/cache")
 FACES_DIR = os.path.join(BASE_DIR, "data/cache/faces")
+PREMIUM_DIR = os.path.join(CACHE_DIR, "premium_crops")
 MOMENTS_PATH = os.path.join(BASE_DIR, "moments.json")
 CLIP_PATH = os.path.join(BASE_DIR, "clip_vectors.npz")
 INSIGHTS_PATH = os.path.join(BASE_DIR, "insights.json")
@@ -31,231 +33,10 @@ JOBS_PATH = os.path.join(BASE_DIR, "data/jobs.json")
 os.makedirs(INPUT_DIR, exist_ok=True)
 os.makedirs(CACHE_DIR, exist_ok=True)
 os.makedirs(FACES_DIR, exist_ok=True)
+os.makedirs(PREMIUM_DIR, exist_ok=True)
 
 app = FastAPI(title="Memories AI")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-
-# === Global State ===
-syncer = MemoriesSync(base_dir=BASE_DIR)
-clip_engine = ClipSearchEngine(model_name="RN50x4")
-quality = QualityScorer()
-insight = MemoryIntelligence()
-moments_engine = MomentsEngine()
-
-UPLOAD_JOBS = {}
-UPLOAD_QUEUE = asyncio.Queue()
-
-def _load_jobs():
-    global UPLOAD_JOBS
-    if os.path.exists(JOBS_PATH):
-        try:
-            with open(JOBS_PATH) as f: UPLOAD_JOBS = json.load(f)
-        except: UPLOAD_JOBS = {}
-
-def _save_jobs():
-    os.makedirs(os.path.dirname(JOBS_PATH), exist_ok=True)
-    with open(JOBS_PATH, 'w') as f: json.dump(UPLOAD_JOBS, f)
-
-_load_jobs()
-
-async def upload_worker():
-    """Sequentially process pending uploads to avoid race conditions."""
-    while True:
-        job_info = await UPLOAD_QUEUE.get()
-        job_id = job_info['job_id']
-        file_path = job_info['file_path']
-        ctx_type = job_info.get('context_type')
-        ctx_id = job_info.get('context_id')
-        
-        try:
-            await _bg_process_photo(file_path, job_id, ctx_type, ctx_id)
-        except Exception as e:
-            print(f"[Worker Error] {e}")
-        finally:
-            UPLOAD_QUEUE.task_done()
-
-@app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(upload_worker())
-
-from ultralytics import FastSAM
-import cv2
-import numpy as np
-
-# Subject Lift Cache
-LIFTED_DIR = os.path.join(DATA_DIR, "lifted")
-os.makedirs(LIFTED_DIR, exist_ok=True)
-
-class SubjectLifter:
-    def __init__(self):
-        self.model = None
-
-    def _ensure_model(self):
-        if self.model is None:
-            self.model = FastSAM("FastSAM-s.pt")
-
-    def lift(self, img_path, face_bbox):
-        self._ensure_model()
-        img = cv2.imread(img_path)
-        if img is None: return None
-        h, w = img.shape[:2]
-        
-        # Convert bbox [x1, y1, x2, y2] pixels to center point
-        x1, y1, x2, y2 = face_bbox
-        px, py = int(x1 + (x2-x1)/2), int(y1 + (y2-y1)/2)
-        
-        # Run FastSAM with point prompt
-        results = self.model.predict(img_path, bboxes=[[x1, y1, x2, y2]], points=[[px, py]], labels=[1], device="cpu", verbose=False)
-        
-        if not results or not results[0].masks: return None
-        
-        mask_data = results[0].masks.data[0].cpu().numpy()
-        mask = cv2.resize(mask_data, (w, h), interpolation=cv2.INTER_NEAREST).astype(bool)
-        
-        bgra = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
-        bgra[:, :, 3] = (mask * 255).astype(np.uint8)
-        
-        coords = np.argwhere(mask)
-        if len(coords) == 0: return None
-        y_min, x_min = coords.min(axis=0)
-        y_max, x_max = coords.max(axis=0)
-        return bgra[y_min:y_max, x_min:x_max]
-
-lifter = SubjectLifter()
-
-@app.get("/api/lifted/{person_id}")
-async def get_lifted_subject(person_id: str):
-    cache_path = os.path.join(LIFTED_DIR, f"{person_id}.png")
-    if os.path.exists(cache_path):
-        return FileResponse(cache_path)
-    
-    with open(INDEX_PATH) as f: index_data = json.load(f)
-    catalog = index_data.get('image_catalog', [])
-    
-    target_photo = None
-    target_face = None
-    
-    for item in catalog:
-        # Check assignments directly for the person
-        for assign in item.get('assignments', []):
-            if assign.get('person_id') == person_id:
-                # Find the face corresponding to this result hash/hash match
-                # For simplicity, we grab the first face if it's assigned
-                if item.get('detected_faces'):
-                    target_photo = item['file_path']
-                    target_face = item['detected_faces'][0]['bbox']
-                    break
-        if target_photo: break
-        
-    if not target_photo:
-        raise HTTPException(status_code=404, detail="Person not found")
-        
-    lifted_img = lifter.lift(target_photo, target_face)
-    if lifted_img is None:
-        raise HTTPException(status_code=500, detail="Segmentation failed")
-        
-    cv2.imwrite(cache_path, lifted_img)
-    return FileResponse(cache_path)
-
-def _refresh_insights():
-    try:
-        data = insight.generate_insights()
-        with open(INSIGHTS_PATH, 'w') as f:
-            json.dump(data, f, indent=2)
-    except Exception as e:
-        print(f"[ERROR] Insight generation failed: {e}")
-
-def _refresh_moments():
-    catalog = [{"file_path": i.file_path, "analyzed_at": i.analyzed_at} for i in syncer.index.image_catalog]
-    moments = moments_engine.compute_moments(catalog, clip_engine._image_embeddings, min_cluster_size=2)
-    with open(MOMENTS_PATH, 'w') as f:
-        json.dump(moments, f, indent=2)
-
-async def _bg_process_photo(file_path: str, job_id: str, context_type: str = None, context_id: str = None):
-    try:
-        UPLOAD_JOBS[job_id]["status"] = "syncing"
-        _save_jobs()
-        syncer.sync()
-        
-        new_entry = next((i for i in syncer.index.image_catalog if i.file_path == file_path), None)
-        if not new_entry:
-            UPLOAD_JOBS[job_id]["status"] = "error"
-            UPLOAD_JOBS[job_id]["error"] = "Sync failed - could not find photo in catalog"
-            _save_jobs()
-            return
-
-        UPLOAD_JOBS[job_id]["status"] = "faces"
-        _save_jobs()
-        new_entry.quality_score = quality.score(file_path)
-        
-        found_names = []
-        for asgn in new_entry.assignments:
-            pid = asgn.person_id
-            if pid and pid in syncer.index.person_registry:
-                person = syncer.index.person_registry[pid]
-                name = person.name
-                if name and not name.startswith("PERSON_"): found_names.append(name)
-        UPLOAD_JOBS[job_id]["found_people"] = list(set(found_names))
-
-        if context_type == 'moment' and context_id and os.path.exists(MOMENTS_PATH):
-            with open(MOMENTS_PATH) as f: moments = json.load(f)
-            for m in moments:
-                if m["id"] == context_id and file_path not in m.get("member_paths", []):
-                    m.setdefault("member_paths", []).append(file_path)
-                    m["count"] = len(m["member_paths"])
-            with open(MOMENTS_PATH, 'w') as f: json.dump(moments, f, indent=2)
-
-        UPLOAD_JOBS[job_id]["status"] = "vectors"
-        _save_jobs()
-        try:
-            clip_engine.ensure_embedding(file_path)
-            if clip_engine._dirty: clip_engine.save_embeddings(CLIP_PATH)
-        except: pass
-
-        UPLOAD_JOBS[job_id]["status"] = "done"
-        syncer._save_index()
-        _refresh_insights()
-        _save_jobs()
-    except Exception as e:
-        print(f"[BG Error] {e}")
-        UPLOAD_JOBS[job_id]["status"] = "error"
-        _save_jobs()
-
-@app.post("/api/upload")
-async def upload_photo(
-    file: UploadFile = File(...), 
-    context_type: Optional[str] = Query(None), 
-    context_id: Optional[str] = Query(None)
-):
-    job_id = str(uuid.uuid4())
-    filename = file.filename
-    file_path = os.path.join(INPUT_DIR, filename)
-    
-    with open(file_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-    
-    UPLOAD_JOBS[job_id] = {
-        "job_id": job_id,
-        "file": filename,
-        "status": "queued",
-        "created_at": time.time()
-    }
-    _save_jobs()
-    
-    await UPLOAD_QUEUE.put({
-        'job_id': job_id, 
-        'file_path': file_path, 
-        'context_type': context_type, 
-        'context_id': context_id
-    })
-    
-    return {"job_id": job_id, "file": filename, "status": "queued"}
-
-@app.get("/api/upload/status/{job_id}")
-async def get_upload_status(job_id: str):
-    if job_id not in UPLOAD_JOBS:
-        raise HTTPException(status_code=404, detail="Job not found")
-    return UPLOAD_JOBS[job_id]
 
 # === Request Models ===
 class RenameRequest(BaseModel):
@@ -292,292 +73,245 @@ class MomentAddPhotoRequest(BaseModel):
     moment_id: str
     photo_path: str
 
-# === Routes ===
+# === Global State ===
+syncer = MemoriesSync(base_dir=BASE_DIR)
+clip_engine = ClipSearchEngine(model_name="RN50x4")
+insight = MemoryIntelligence()
+moments_engine = MomentsEngine()
+
+UPLOAD_JOBS = {}
+UPLOAD_QUEUE = asyncio.Queue()
+
+def _load_jobs():
+    global UPLOAD_JOBS
+    if os.path.exists(JOBS_PATH):
+        try:
+            with open(JOBS_PATH) as f: UPLOAD_JOBS = json.load(f)
+        except: UPLOAD_JOBS = {}
+
+def _save_jobs():
+    os.makedirs(os.path.dirname(JOBS_PATH), exist_ok=True)
+    with open(JOBS_PATH, 'w') as f: json.dump(UPLOAD_JOBS, f)
+
+_load_jobs()
+
+async def upload_worker():
+    while True:
+        job_info = await UPLOAD_QUEUE.get()
+        job_id = job_info['job_id']
+        file_path = job_info['file_path']
+        ctx_type = job_info.get('context_type')
+        ctx_id = job_info.get('context_id')
+        try:
+            await _bg_process_photo(file_path, job_id, ctx_type, ctx_id)
+        except Exception as e:
+            print(f"[Worker Error] {e}")
+        finally:
+            UPLOAD_QUEUE.task_done()
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(upload_worker())
+
+@app.get("/api/crop/premium/{person_id}")
+async def get_premium_crop(person_id: str):
+    """Generates an aesthetic, head-and-shoulders portrait crop."""
+    cache_path = os.path.join(PREMIUM_DIR, f"{person_id}.jpg")
+    try:
+        if os.path.exists(cache_path):
+            return FileResponse(cache_path)
+        
+        if not os.path.exists(INDEX_PATH): raise HTTPException(status_code=404)
+        with open(INDEX_PATH) as f: index_data = json.load(f)
+        
+        person_info = index_data.get('person_registry', {}).get(person_id)
+        if not person_info: # Person not found at all
+            raise HTTPException(status_code=404, detail="Person not found in registry")
+        
+        best_hash = person_info.get('best_face_hash')
+        target_photo = None
+        face_bbox_pixel_coords = None
+
+        # Attempt 1: Use best_face_hash if available
+        if best_hash:
+            for item in index_data.get('image_catalog', []):
+                for face in item.get('detected_faces', []):
+                    if face.get('face_hash') == best_hash:
+                        target_photo = item['file_path']
+                        face_bbox_pixel_coords = face['bbox']
+                        break
+                if target_photo: break
+
+        # Attempt 2: Fallback to any photo with the person if best_face_hash fails or is missing
+        if not target_photo:
+            # Get a list of all images this person is assigned to
+            assigned_images = [item for item in index_data.get('image_catalog', []) 
+                               if any(assign.get('person_id') == person_id 
+                                      for assign in item.get('assignments', []))]
+            
+            if assigned_images:
+                # Pick the first one with detected faces
+                for item in assigned_images:
+                    if item.get('detected_faces'):
+                        target_photo = item['file_path']
+                        # Find the first face assigned to this person in this photo
+                        for face in item['detected_faces']:
+                            if any(a.get('person_id') == person_id for a in item.get('assignments', []) if a.get('face_hash') == face.get('face_hash')):
+                                face_bbox_pixel_coords = face['bbox']
+                                break
+                        if target_photo and face_bbox_pixel_coords: break # Found a photo and its face
+
+        if not target_photo or not os.path.exists(target_photo) or not face_bbox_pixel_coords:
+            raise HTTPException(status_code=404, detail="No suitable photo or face found for person")
+        
+        img = Image.open(target_photo).convert('RGB')
+        w, h = img.size
+        # Bbox in pixel coordinates (already verified in index.json)
+        fx1, fy1, fx2, fy2 = face_bbox_pixel_coords
+        
+        f_w, f_h = abs(fx2 - fx1), abs(fy2 - fy1)
+        cx, cy = min(fx1, fx2) + f_w/2, min(fy1, fy2) + f_h/2
+        
+        # Defensive crop calculation
+        target_sz = max(f_w, f_h) * 2.2
+        pw, ph = target_sz * 0.8, target_sz 
+        
+        left = max(0, int(cx - pw/2))
+        top = max(0, int(cy - ph*0.45))
+        right = min(w, int(cx + pw/2))
+        bottom = min(h, int(cy + ph*0.55))
+        
+        # Guaranteed valid coordinates for PIL
+        f_left, f_right = (left, right) if left < right else (right, left)
+        f_top, f_bottom = (top, bottom) if top < bottom else (bottom, top)
+        
+        if f_right - f_left < 10 or f_bottom - f_top < 10:
+            print(f"[Premium Crop Error] Calculated crop too small for {person_id}. Falling back to full photo.")
+            return FileResponse(target_photo) # Fallback to full photo if crop is too small
+
+        img.crop((f_left, f_top, f_right, f_bottom)).save(cache_path, "JPEG", quality=90)
+        return FileResponse(cache_path)
+    except Exception as e:
+        print(f"[Premium Crop Error] {e}")
+        raise HTTPException(status_code=500, detail="Premium crop generation failed")
+
+def _refresh_insights():
+    try:
+        data = insight.generate_insights()
+        with open(INSIGHTS_PATH, 'w') as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        print(f"[ERROR] Insight generation failed: {e}")
+
+def _refresh_moments():
+    catalog = [{"file_path": i.file_path, "analyzed_at": i.analyzed_at} for i in syncer.index.image_catalog]
+    moments = moments_engine.compute_moments(catalog, clip_engine._image_embeddings, min_cluster_size=2)
+    with open(MOMENTS_PATH, 'w') as f:
+        json.dump(moments, f, indent=2)
+
+async def _bg_process_photo(file_path: str, job_id: str, context_type: str = None, context_id: str = None):
+    try:
+        UPLOAD_JOBS[job_id]["status"] = "syncing"
+        _save_jobs()
+        syncer.sync()
+        new_entry = next((i for i in syncer.index.image_catalog if i.file_path == file_path), None)
+        if not new_entry:
+            UPLOAD_JOBS[job_id]["status"] = "error"
+            _save_jobs()
+            return
+        UPLOAD_JOBS[job_id]["status"] = "faces"
+        _save_jobs()
+        UPLOAD_JOBS[job_id]["status"] = "vectors"
+        _save_jobs()
+        clip_engine.ensure_embedding(file_path)
+        UPLOAD_JOBS[job_id]["status"] = "done"
+        syncer._save_index()
+        _refresh_insights()
+        _refresh_moments()
+        _save_jobs()
+    except Exception as e:
+        print(f"[BG Error] {e}")
+        UPLOAD_JOBS[job_id]["status"] = "error"
+        _save_jobs()
+
+@app.post("/api/upload")
+async def upload_photo(file: UploadFile = File(...), context_type: Optional[str] = Query(None), context_id: Optional[str] = Query(None)):
+    job_id = str(uuid.uuid4())
+    file_path = os.path.join(INPUT_DIR, file.filename)
+    with open(file_path, "wb") as f: shutil.copyfileobj(file.file, f)
+    UPLOAD_JOBS[job_id] = {"job_id": job_id, "file": file.filename, "status": "queued", "created_at": time.time()}
+    _save_jobs()
+    await UPLOAD_QUEUE.put({'job_id': job_id, 'file_path': file_path, 'context_type': context_type, 'context_id': context_id})
+    return {"job_id": job_id, "file": file.filename, "status": "queued"}
+
+@app.get("/api/upload/status/{job_id}")
+async def get_upload_status(job_id: str): return UPLOAD_JOBS.get(job_id, {"status": "not_found"})
 
 @app.get("/api/index")
 async def get_index():
     if not os.path.exists(INDEX_PATH): return {}
-    with open(INDEX_PATH) as f: data = json.load(f)
-    for img in data.get("image_catalog", []):
-        img["person_ids"] = list(set(a.get("person_id") for a in img.get("assignments", []) if a.get("person_id")))
-    return data
+    with open(INDEX_PATH) as f: return json.load(f)
 
 @app.get("/api/photos")
 async def get_photos():
-    # 1. Load ground truth from index.json
-    image_catalog = []
-    if os.path.exists(INDEX_PATH):
-        try:
-            with open(INDEX_PATH) as f: 
-                data = json.load(f)
-                image_catalog = data.get("image_catalog", [])
-        except: pass
+    if not os.path.exists(INDEX_PATH): return []
+    try:
+        with open(INDEX_PATH) as f: 
+            data = json.load(f)
+            image_catalog = data.get("image_catalog", [])
+    except: return []
     
-    # 2. Build map of existing file paths for quick lookup
-    existing_paths = {p.get("file_path") for p in image_catalog if p.get("file_path")}
-    
-    # 3. Enrich existing photos with status
     processed_photos = []
     for p in image_catalog:
         file_path = p.get("file_path", "")
         filename = os.path.basename(file_path)
-        
-        # Find matching job
         status = "done"
         for jid, job in UPLOAD_JOBS.items():
-            if job.get("file") == filename:
+            if box := job.get("file") == filename:
                 status = job.get("status", "done")
                 break
-        
-        # Enrich assignments with bboxes for selective face cropping
-        face_map = {f.get("face_hash"): f.get("bbox") for f in p.get("detected_faces", [])}
-        enriched_assignments = []
-        for asgn in p.get("assignments", []):
-            enriched_assignments.append({
-                "person_id": asgn.get("person_id"),
-                "face_hash": asgn.get("face_hash"),
-                "bbox": face_map.get(asgn.get("face_hash"))
-            })
 
         processed_photos.append({
             "file_path": file_path, 
             "analyzed_at": p.get("analyzed_at", ""),
             "caption": p.get("caption", ""), 
-            "ai_desc": p.get("ai_desc", ""), 
-            "assignments": enriched_assignments,
-            "resolution": p.get("resolution"),
             "processing_status": status,
             "person_ids": list(set(a.get("person_id") for a in p.get("assignments", []) if a.get("person_id")))
         })
-
-    # Sort processed photos by analyzed_at DESC
     processed_photos.sort(key=lambda x: x.get("analyzed_at", "0000-00-00"), reverse=True)
-
-    # 4. Add "Ghost" photos (Jobs that haven't hit the index yet)
-    ghosts = []
-    for jid, job in UPLOAD_JOBS.items():
-        filename = job.get("file")
-        status = job.get("status")
-        full_path = os.path.join(INPUT_DIR, filename)
-        
-        if full_path not in existing_paths and status not in ["done", "error"]:
-            ghosts.append({
-                "file_path": full_path,
-                "analyzed_at": datetime.datetime.fromtimestamp(job.get("created_at", 0)).isoformat(),
-                "caption": "Processing...",
-                "ai_desc": "",
-                "assignments": [],
-                "processing_status": status,
-                "person_ids": [],
-                "is_ghost": True,
-                "context_type": job.get("context_type"),
-                "context_id": job.get("context_id")
-            })
-    
-    # Sort ghosts by creation time DESC
-    ghosts.sort(key=lambda x: x.get("analyzed_at", "0000-00-00"), reverse=True)
-            
-    return ghosts + processed_photos
-
-@app.get("/api/upload/active-jobs")
-async def get_active_jobs():
-    """Returns jobs that are not yet reached a terminal state."""
-    active = {jid: job for jid, job in UPLOAD_JOBS.items() if job.get("status") not in ["done", "error"]}
-    return active
+    return processed_photos
 
 @app.get("/api/people")
 async def get_people():
     if not os.path.exists(INDEX_PATH): return []
     with open(INDEX_PATH) as f: data = json.load(f)
     registry = data.get("person_registry", {})
-    photos = data.get("image_catalog", [])
+    catalog = data.get("image_catalog", [])
     person_counts = {}
-    for photo in photos:
+    for photo in catalog:
         for asgn in photo.get("assignments", []):
             pid = asgn.get("person_id")
             if pid: person_counts[pid] = person_counts.get(pid, 0) + 1
     
-    # Build a lookup: face_hash -> bbox for each photo's detected_faces
-    face_bbox_lookup = {}
-    for photo in photos:
-        for face in photo.get("detected_faces", []):
-            face_bbox_lookup[face.get("face_hash")] = face.get("bbox")
-        # Also index by photo file_path for assignments
-        for assignment in photo.get("assignments", []):
-            fh = assignment.get("face_hash")
-            if fh and fh in face_bbox_lookup:
-                assignment["_bbox"] = face_bbox_lookup[fh]
-
     people = []
     for pid, info in registry.items():
-        best_hash = info.get("best_face_hash")
-        avatar = info.get("avatar")
-        face_bbox = None
-
-        # Try to find avatar + bbox from best_face_hash first
-        if best_hash and best_hash in face_bbox_lookup:
-            face_bbox = face_bbox_lookup[best_hash]
-            # Find a photo that has this face
-            for photo in photos:
-                for face in photo.get("detected_faces", []):
-                    if face.get("face_hash") == best_hash:
-                        avatar = photo.get("file_path")
-                        break
-                if avatar:
-                    break
-
-        # Fallback: find any photo belonging to this person
-        if not avatar:
-            for photo in photos:
-                for assignment in photo.get("assignments", []):
-                    if assignment.get("person_id") == pid:
-                        avatar = photo.get("file_path")
-                        face_bbox = assignment.get("_bbox")
-                        break
-                if avatar:
-                    break
-
-        # Normalize bbox to CSS object-position percentages using image resolution
-        normalized_bbox = None
-        if face_bbox and len(face_bbox) == 4:
-            x1, y1, x2, y2 = face_bbox
-            # Use image resolution for proper normalization
-            res = photo.get("resolution")
-            if res and len(res) == 2:
-                img_w, img_h = float(res[0]), float(res[1])
-            else:
-                # Fallback to using bbox for resolution if not present, but ensure it's not zero
-                img_w, img_h = float(x2 - x1), float(y2 - y1)
-                if img_w == 0 or img_h == 0: # Avoid division by zero if bbox somehow collapsed
-                    img_w, img_h = 100, 100 
-
-            w_face = x2 - x1
-            h_face = y2 - y1
-            if img_w > 0 and img_h > 0 and w_face > 0 and h_face > 0:
-                cx = (x1 + w_face / 2) / img_w * 100
-                cy = (y1 + h_face / 2) / img_h * 100
-                normalized_bbox = [cx, cy, w_face, h_face, x1, y1, x2, y2]
-
-        people.append({"id": pid, "display": info.get("name", "Person"), "name": info.get("name", "Person"), "count": person_counts.get(pid, 0), "avatar": avatar, "face_bbox": normalized_bbox})
+        people.append({
+            "id": pid, 
+            "display": info.get("name", pid), 
+            "count": person_counts.get(pid, 0),
+            "premium_crop": f"/api/crop/premium/{pid}"
+        })
     return people
+
+@app.get("/api/upload/active-jobs")
+async def get_active_jobs():
+    return {jid: job for jid, job in UPLOAD_JOBS.items() if job.get("status") not in ["done", "error"]}
 
 @app.get("/api/moments")
 async def get_moments():
     if os.path.exists(MOMENTS_PATH):
         with open(MOMENTS_PATH) as f: return json.load(f)
     return []
-
-@app.post("/api/moments/rename")
-async def rename_moment(req: MomentRenameRequest):
-    if not os.path.exists(MOMENTS_PATH): raise HTTPException(status_code=404, detail="No moments")
-    with open(MOMENTS_PATH) as f: moments = json.load(f)
-    for m in moments:
-        if m.get('id') == req.moment_id: m['label'] = req.new_label; break
-    with open(MOMENTS_PATH, 'w') as f: json.dump(moments, f, indent=2)
-    return {"status": "ok"}
-
-@app.post("/api/moments/delete")
-async def delete_moment(req: MomentDeleteRequest):
-    if not os.path.exists(MOMENTS_PATH): raise HTTPException(status_code=404, detail="No moments")
-    with open(MOMENTS_PATH) as f: moments = json.load(f)
-    moments = [m for m in moments if m.get('id') != req.moment_id]
-    with open(MOMENTS_PATH, 'w') as f: json.dump(moments, f, indent=2)
-    return {"status": "ok"}
-
-@app.post("/api/moments/regenerate")
-async def regenerate_moments():
-    _refresh_moments()
-    return {"status": "ok"}
-
-@app.post("/api/people/delete")
-async def delete_person(req: DeletePersonRequest):
-    with open(INDEX_PATH) as f: idx = json.load(f)
-    if req.person_id in idx.get("person_registry", {}): del idx["person_registry"][req.person_id]
-    for img in idx.get("image_catalog", []):
-        img["assignments"] = [a for a in img.get("assignments", []) if a.get("person_id") != req.person_id]
-        img["caption"] = img.get("caption", "")
-    with open(INDEX_PATH, 'w') as f: json.dump(idx, f, indent=2)
-    return {"status": "ok"}
-
-@app.post("/api/photos/caption")
-async def update_caption(req: PhotoCaptionRequest):
-    with open(INDEX_PATH) as f: idx = json.load(f)
-    for img in idx.get("image_catalog", []):
-        if img["file_path"] == req.file_path: img["caption"] = req.caption; break
-    with open(INDEX_PATH, 'w') as f: json.dump(idx, f, indent=2)
-    return {"status": "ok"}
-
-@app.post("/api/photos/move")
-async def move_photo(req: PhotoMoveRequest):
-    dest = os.path.join(BASE_DIR, req.target_folder, os.path.basename(req.file_path))
-    os.makedirs(os.path.dirname(dest), exist_ok=True)
-    if os.path.exists(req.file_path): shutil.move(req.file_path, dest)
-    
-    # 1. Update Index catalog
-    with open(INDEX_PATH) as f: idx = json.load(f)
-    for img in idx.get("image_catalog", []):
-        if img["file_path"] == req.file_path: img["file_path"] = dest; break
-    with open(INDEX_PATH, 'w') as f: json.dump(idx, f, indent=2)
-    
-    # 2. Update Moments albums
-    if os.path.exists(MOMENTS_PATH):
-        with open(MOMENTS_PATH) as f: moments = json.load(f)
-        for m in moments:
-            m["member_paths"] = [dest if p == req.file_path else p for p in m.get("member_paths", [])]
-            if m.get("cover_image") == req.file_path: m["cover_image"] = dest
-        with open(MOMENTS_PATH, 'w') as f: json.dump(moments, f, indent=2)
-        
-    return {"status": "ok"}
-
-@app.post("/api/photos/delete")
-async def delete_photo(req: PhotoDeleteRequest):
-    # 1. Physical Delete
-    if os.path.exists(req.file_path): os.remove(req.file_path)
-    
-    # 2. Update Index catalog
-    with open(INDEX_PATH) as f: idx = json.load(f)
-    idx["image_catalog"] = [img for img in idx["image_catalog"] if img["file_path"] != req.file_path]
-    with open(INDEX_PATH, 'w') as f: json.dump(idx, f, indent=2)
-    
-    # 3. Update Moments albums
-    if os.path.exists(MOMENTS_PATH):
-        with open(MOMENTS_PATH) as f: moments = json.load(f)
-        for m in moments:
-            m["member_paths"] = [p for p in m.get("member_paths", []) if p != req.file_path]
-            m["count"] = len(m["member_paths"])
-            if m.get("cover_image") == req.file_path:
-                m["cover_image"] = m["member_paths"][0] if m["member_paths"] else ""
-        with open(MOMENTS_PATH, 'w') as f: json.dump(moments, f, indent=2)
-        
-    return {"status": "ok"}
-
-
-@app.post("/api/moments/create")
-async def create_moment(req: MomentCreateRequest):
-    if os.path.exists(MOMENTS_PATH):
-        with open(MOMENTS_PATH) as f: moments = json.load(f)
-    else: moments = []
-    moment_id = f"MOMENT_{len(moments):03d}"
-    from datetime import datetime
-    now = datetime.now()
-    moments.append({"id": moment_id, "label": req.label, "cover_image": req.photo_paths[0] if req.photo_paths else "", "member_paths": req.photo_paths or req.member_paths or [], "count": len(req.photo_paths or req.member_paths or []), "created_at": now.isoformat(), "timestamp": int(now.timestamp())})
-    with open(MOMENTS_PATH, 'w') as f: json.dump(moments, f, indent=2)
-    return {"status": "ok", "moment_id": moment_id}
-
-@app.post("/api/moments/add-photo")
-async def add_photo_to_moment(req: MomentAddPhotoRequest):
-    if not os.path.exists(MOMENTS_PATH): raise HTTPException(status_code=404, detail="No moments")
-    with open(MOMENTS_PATH) as f: moments = json.load(f)
-    for m in moments:
-        if m["id"] == req.moment_id:
-            if req.photo_path not in m.get("member_paths", []):
-                m.setdefault("member_paths", []).append(req.photo_path)
-                m["count"] = len(m["member_paths"])
-                if not m.get("cover_image"): m["cover_image"] = req.photo_path
-            break
-    else: raise HTTPException(status_code=404, detail="Moment not found")
-    with open(MOMENTS_PATH, 'w') as f: json.dump(moments, f, indent=2)
-    return {"status": "ok"}
 
 @app.get("/api/insights")
 async def get_insights():
@@ -586,63 +320,31 @@ async def get_insights():
         with open(INSIGHTS_PATH) as f: return json.load(f)
     return []
 
-@app.get("/api/face-thumb/{face_hash}")
-async def get_face_thumb(face_hash: str):
-    path = os.path.join(FACES_DIR, f"{face_hash}.jpg")
-    if os.path.exists(path): return FileResponse(path, media_type="image/jpeg")
-    raise HTTPException(status_code=404, detail="Not found")
-
-# === HTML UI ===
 @app.get("/")
 async def root(): return FileResponse("web/app.html")
 
-@app.get("/favicon.ico")
-async def favicon(): raise HTTPException(status_code=404)
-
-# Serve static assets
 app.mount("/web", StaticFiles(directory="web"), name="web")
 app.mount("/images", StaticFiles(directory=INPUT_DIR), name="images")
 app.mount("/cache", StaticFiles(directory=CACHE_DIR), name="cache")
 
-# === Server-side face crop endpoint ===
 @app.get("/crop/{path:path}")
 async def face_crop(path: str, crop: str = None):
-    from PIL import Image
     full_path = os.path.join(INPUT_DIR, path)
-    if not os.path.exists(full_path): raise HTTPException(status_code=404, detail="Image not found")
+    if not os.path.exists(full_path): raise HTTPException(status_code=404)
     if not crop: return FileResponse(full_path)
-    try: cx, cy, fw, fh = [float(x) for x in crop.split(',')]
+    try:
+        cx, cy, fw, fh = [float(x) for x in crop.split(',')]
+        img = Image.open(full_path).convert('RGB')
+        w, h = img.size
+        cp_x, cp_y = cx * w / 100, cy * h / 100
+        sz = max(fw, fh) * 1.5
+        left, top = max(0, cp_x - sz/2), max(0, cp_y - sz/2)
+        right, bottom = min(w, cp_x + sz/2), min(h, cp_y + sz/2)
+        buf = io.BytesIO()
+        img.crop((left, top, right, bottom)).save(buf, format="JPEG")
+        buf.seek(0)
+        return StreamingResponse(buf, media_type="image/jpeg")
     except: return FileResponse(full_path)
-
-    img = Image.open(full_path).convert('RGB')
-    orig_w, orig_h = img.size
-    cx_px = cx / 100.0 * orig_w
-    cy_px = cy / 100.0 * orig_h
-    fw_px = max(fw, 20.0)
-    fh_px = max(fh, 20.0)
-    out_size = 600
-    target_face_px = out_size * 0.65
-    scale_w = out_size / fw_px * target_face_px / out_size
-    scale_h = out_size / fh_px * target_face_px / out_size
-    scale = min(scale_w, scale_h, 5.0)
-
-    crop_w = orig_w / scale
-    crop_h = orig_h / scale
-    x1 = max(0, int(cx_px - crop_w / 2))
-    y1 = max(0, int(cy_px - crop_h / 2))
-    x2 = min(orig_w, int(cx_px + crop_w / 2))
-    y2 = min(orig_h, int(cy_px + crop_h / 2))
-
-    if x2 - x1 >= orig_w or y2 - y1 >= orig_h: return FileResponse(full_path)
-
-    cropped = img.crop((x1, y1, x2, y2))
-    resized = cropped.resize((out_size, out_size), Image.LANCZOS)
-
-    cache_key = hashlib.md5(f"{path}_{crop}".encode()).hexdigest()
-    cache_path = os.path.join(CACHE_DIR, cache_key + '.jpg')
-    resized.save(cache_path, 'JPEG', quality=85)
-
-    return FileResponse(cache_path)
 
 if __name__ == "__main__":
     import uvicorn
