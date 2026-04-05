@@ -14,6 +14,7 @@
         @keyframes toastUp { from { transform: translate(-50%, 20px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
         .toast-anim { animation: toastUp .3s ease-out; }
         .bento-card { background: rgba(24, 24, 27, 0.4); border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(12px); }
+        .photo-hero { grid-column: span 2; grid-row: span 2; }
     </style>
 </head>
 <body x-data="app()" x-init="init()" class="bg-[#09090b] text-white font-sans antialiased overflow-x-hidden">
@@ -180,10 +181,11 @@
                         <span x-text="searchResults.length + ' results for &quot;' + searchQuery + '&quot;'"></span>
                     </h2>
                 </div>
-                <div class="grid grid-cols-3 gap-2">
+                <div class="grid grid-cols-4 gap-2">
                     <template x-for="(p, i) in searchResults" :key="'search-' + p.file_path">
                         <div @click="openLightboxFromResults(i)" 
-                             class="aspect-square rounded-xl overflow-hidden bento-card active:scale-95 transition-all relative border-2 border-transparent hover:border-blue-500/30">
+                             :class="i === 0 && searchResults.length > 1 ? 'photo-hero col-span-2 row-span-2' : 'aspect-square rounded-xl'"
+                             class="overflow-hidden bento-card active:scale-95 transition-all relative border-2 border-transparent hover:border-blue-500/30">
                             <img :src="'/images/' + p.file_path.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover">
                             <div class="absolute bottom-1 right-1 px-1.5 py-0.5 bg-blue-500/80 rounded-md text-[9px] font-bold text-white" x-text="Math.round(p.score * 100) + '%'"></div>
                         </div>
@@ -213,18 +215,21 @@
                     <div class="mb-8">
                         <h3 class="text-2xl font-black text-zinc-300 mb-4 flex items-center gap-3">
                             <span x-text="yg.year || 'Unknown Date'"></span>
-                            <span class="text-sm font-bold text-zinc-600" x-text="yg.totalPhotos + ' photos'"></span>
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-zinc-800 text-zinc-400 border border-zinc-700" x-text="yg.totalPhotos"></span>
                             <div class="flex-1 h-px bg-zinc-800 ml-2"></div>
                         </h3>
                         <!-- Month Groups -->
                         <template x-for="mg in yg.months" :key="'month-' + mg.label">
                             <div class="mb-6">
-                                <h4 class="text-sm font-bold text-zinc-500 mb-3 uppercase tracking-wider" x-text="mg.label"></h4>
-                                <div class="grid grid-cols-3 gap-2">
-                                    <template x-for="p in mg.photos" :key="p.file_path">
+                            <h4 class="text-sm font-bold text-zinc-500 mb-3 uppercase tracking-wider flex items-center gap-2">
+                                <span x-text="mg.label"></span>
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-zinc-800/60 text-zinc-600" x-text="mg.photos.length"></span>
+                            </h4>
+                                <div class="grid grid-cols-4 gap-2">
+                                    <template x-for="(p, idx) in mg.photos" :key="p.file_path">
                                         <div @click="selectionMode ? toggleSelection(p.file_path) : openLightboxFromAll(p.file_path)" 
-                                             class="aspect-square rounded-xl overflow-hidden bento-card active:scale-95 transition-all relative border-2"
-                                             :class="selectedItems.includes(p.file_path) ? 'border-blue-500 scale-95' : 'border-transparent'">
+                                             :class="[p === mg.photos[0] && mg.photos.length > 1 ? 'photo-hero col-span-2 row-span-2' : 'aspect-square rounded-xl', 'overflow-hidden bento-card active:scale-95 transition-all relative border-2']"
+                                             :class="[selectedItems.includes(p.file_path) ? 'border-blue-500 scale-95' : 'border-transparent']">
                                             <img :src="'/images/' + p.file_path.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover" @error="this.style.display='none'; this.parentElement.innerHTML='<div class=\'w-full h-full flex items-center justify-center bg-zinc-800\'><span class=\'text-zinc-600 text-lg\'>🧩</span></div>'">
                                             <!-- Date badge on hover -->
                                             <div class="absolute inset-0 bg-black/0 hover:bg-black/40 transition-colors flex items-end p-1.5 opacity-0 hover:opacity-100">
