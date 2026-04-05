@@ -26,5 +26,24 @@
     "title": "Your World in Numbers",
     "message": "7 unique faces. 7 photos captured.",
     "icon": "\ud83c\udf0d"
+  },
+  {
+    "type": "seasonal",
+    "title": "\ud83c\udf38 Spring 2026",
+    "message": "7 photos with 7 people. Your quiet season.",
+    "icon": "\ud83c\udf38",
+    "data": {
+      "photos": [
+        "/root/memories-sorted/data/input/1000052374.jpg",
+        "/root/memories-sorted/data/input/1000052369.jpg",
+        "/root/memories-sorted/data/input/1000052351.jpg",
+        "/root/memories-sorted/data/input/1000052277.jpg",
+        "/root/memories-sorted/data/input/1000052293.jpg",
+        "/root/memories-sorted/data/input/1000052013.jpg",
+        "/root/memories-sorted/data/input/1000052132.jpg"
+      ],
+      "season": "spring",
+      "year": 2026
+    }
   }
 ]

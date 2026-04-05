@@ -186,6 +186,68 @@
             </section>
         </div>
 
+        <!-- Tab: Memories -->
+        <div x-show="tab === 'memories'" x-cloak class="p-6 max-w-2xl mx-auto">
+            <div class="flex items-center justify-between mb-8 pt-4">
+                <h1 class="text-4xl font-black tracking-tight">Memories</h1>
+                <button @click="refreshInsights()" class="bg-white/5 p-3 rounded-2xl border border-white/5 active:scale-90 transition-all">
+                    <i data-lucide="refresh-cw" class="w-5 h-5 text-zinc-400"></i>
+                </button>
+            </div>
+
+            <!-- Memory Flashbacks -->
+            <template x-if="memoriesFlashback">
+                <div class="mb-8">
+                    <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                        <span>🕰️</span> On This Day
+                    </h2>
+                    <div class="bento-card p-5 rounded-3xl border border-white/10 bg-gradient-to-br from-purple-500/10 via-pink-500/5 to-orange-500/10">
+                        <div class="flex items-start gap-4 mb-4">
+                            <div class="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center text-2xl flex-shrink-0">📸</div>
+                            <div>
+                                <h3 class="font-bold text-white text-lg" x-text="memoriesFlashback.title"></h3>
+                                <p class="text-sm text-zinc-400 leading-relaxed mt-1" x-text="memoriesFlashback.message"></p>
+                            </div>
+                        </div>
+                        <!-- Photo grid for this memory -->
+                        <div class="grid grid-cols-4 gap-2 mt-4" x-show="memoriesFlashback.data && memoriesFlashback.data.photos">
+                            <template x-for="(fp, i) in (memoriesFlashback.data.photos || []).slice(0, 8)" :key="'mem-'+i">
+                                <div class="aspect-square rounded-xl overflow-hidden bg-zinc-800">
+                                    <img :src="'/images/' + fp.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover active:scale-90 transition-transform" @click="lbFromPhotos(memoriesFlashback.data.photos.map(p => ({file_path: p})), i); lbOpen = true">
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+            <!-- Seasonal Intelligence -->
+            <template x-if="seasonalCard">
+                <div class="mb-8">
+                    <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                        <span x-text="seasonalCard.icon"></span> <span x-text="seasonalCard.title"></span>
+                    </h2>
+                    <div class="bento-card p-5 rounded-3xl border border-white/10 bg-gradient-to-br from-blue-500/10 via-cyan-500/5 to-teal-500/10">
+                        <p class="text-sm text-zinc-400 leading-relaxed mb-4" x-text="seasonalCard.message"></p>
+                        <div class="grid grid-cols-4 gap-2" x-show="seasonalCard.data && seasonalCard.data.photos">
+                            <template x-for="(fp, i) in (seasonalCard.data.photos || []).slice(0, 8)" :key="'sea-'+i">
+                                <div class="aspect-square rounded-xl overflow-hidden bg-zinc-800">
+                                    <img :src="'/images/' + fp.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover active:scale-90 transition-transform" @click="lbFromPhotos(seasonalCard.data.photos.map(p => ({file_path: p})), i); lbOpen = true">
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+            <!-- Empty state -->
+            <div x-show="!memoriesFlashback && !seasonalCard" class="flex flex-col items-center justify-center py-20 text-center">
+                <div class="text-6xl mb-6">🌙</div>
+                <h3 class="text-xl font-bold text-zinc-300 mb-2">No Memories Yet</h3>
+                <p class="text-zinc-500 max-w-xs mx-auto">Upload more photos and come back — the AI will surface moments from your past and seasonal patterns.</p>
+            </div>
+        </div>
+
         <!-- Tab: Moments -->
         <div x-show="tab === 'moments'" x-cloak class="p-6 max-w-2xl mx-auto">
             <div class="flex items-center justify-between mb-8 pt-4">
@@ -305,10 +367,10 @@
     <!-- Global Floating Tab Bar -->
     <nav class="fixed bottom-6 left-6 right-6 z-[55] bento-card px-2 py-3 rounded-[24px] border border-white/10 shadow-3xl">
         <div class="flex items-center justify-between gap-1">
-            <template x-for="t in ['discover', 'moments', 'people']" :key="t">
+            <template x-for="t in ['discover', 'memories', 'moments', 'people']" :key="t">
                 <button @click="tab = t" class="flex-1 flex flex-col items-center gap-1 py-1.5 transition-all rounded-xl"
                         :class="tab === t ? 'text-blue-500 bg-blue-500/10' : 'text-zinc-500 hover:text-white'">
-                    <i :data-lucide="t === 'discover' ? 'layout-grid' : (t === 'moments' ? 'layers' : 'users')" class="w-5 h-5"></i>
+                    <i :data-lucide="t === 'discover' ? 'layout-grid' : (t === 'memories' ? 'sparkles' : (t === 'moments' ? 'layers' : 'users'))" class="w-5 h-5"></i>
                     <span class="text-[9px] font-bold uppercase tracking-wider" x-text="t"></span>
                 </button>
             </template>
@@ -330,7 +392,7 @@
                     <i data-lucide="chevron-left" class="w-6 h-6 text-white"></i>
                 </button>
                 <div class="flex gap-2">
-                    <button @click.stop="lbMoveShow = true" class="w-12 h-12 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center active:scale-90 transition-transform">
+                    <button @click.stop="openMoveModal()" class="w-12 h-12 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center active:scale-90 transition-transform">
                         <i data-lucide="folder-plus" class="w-5 h-5 text-white"></i>
                     </button>
                     <button @click.stop="lbDeleteShow = true" class="w-12 h-12 bg-red-500/20 backdrop-blur-md rounded-2xl flex items-center justify-center border border-red-500/20 active:scale-90 transition-transform">
@@ -486,48 +548,44 @@
     </div>
 
     <!-- Modal: Organize / Add to Moment -->
-    <div x-show="lbMoveShow" x-cloak class="fixed inset-0 z-[73] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-xl" style="display:none">
-        <div @click="$el.closest('.fixed').removeAttribute('style'); lbMoveShow = false" class="bg-zinc-900 border-t sm:border border-white/10 rounded-t-[32px] sm:rounded-3xl w-full max-w-lg p-6 shadow-2xl">
+    <!-- Modal: Move to Folder -->
+        <div x-show="lbMoveShow" x-cloak class="fixed inset-0 z-[73] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-xl" style="display:none"
+             @click="lbMoveShow = false">
+            <div @click.stop class="bg-zinc-900 border-t sm:border border-white/10 rounded-t-[32px] sm:rounded-3xl w-full max-w-lg p-6 shadow-2xl">
                 <div class="w-12 h-1.5 bg-white/10 rounded-full mx-auto mb-6 sm:hidden"></div>
-                <h3 class="text-xl font-bold text-white mb-6">Organize Photo</h3>
-                
-                <div class="mb-8">
-                    <p class="text-xs text-zinc-500 uppercase tracking-widest font-bold mb-4">Add to Moment</p>
-                    <div class="flex gap-3 overflow-x-auto pb-4 -mx-2 px-2 scrollbar-none">
-                        <template x-for="m in moments" :key="m.id">
-                            <button @click="doAddToMoment(m.id)" 
-                                    class="flex-shrink-0 w-24 bg-white/5 border border-white/10 rounded-2xl p-2 text-center hover:bg-white/10 active:scale-95 transition-all">
-                                <div class="w-full aspect-square rounded-xl overflow-hidden mb-2 bg-zinc-800 flex items-center justify-center">
-                                    <template x-if="m.cover_image">
-                                        <img :src="'/images/' + m.cover_image.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover">
-                                    </template>
-                                    <template x-if="!m.cover_image">
-                                        <div class="w-full h-full flex items-center justify-center">
-                                            <i data-lucide="image" class="w-6 h-6 text-zinc-600"></i>
-                                        </div>
-                                    </template>
-                                </div>
-                                <p class="text-xs font-bold text-white truncate" x-text="m.label"></p>
-                            </button>
-                        </template>
-                    </div>
+                <h3 class="text-lg font-bold text-white mb-4">Organize Photo</h3>
+
+                <!-- Folder Grid -->
+                <p class="text-xs text-zinc-500 uppercase tracking-widest font-bold mb-3">Move to Folder</p>
+                <div class="grid grid-cols-4 gap-2 mb-4">
+                    <template x-for="f in availableFolders" :key="f.name">
+                        <button @click.stop="doMovePhoto(f.path)"
+                                class="flex flex-col items-center p-3 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 active:scale-95 transition-all">
+                            <div class="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center mb-2">
+                                <i data-lucide="folder" class="w-5 h-5 text-zinc-400"></i>
+                            </div>
+                            <span class="text-[11px] font-bold text-zinc-300 truncate w-full text-center" x-text="f.name"></span>
+                        </button>
+                    </template>
                 </div>
 
-                <div class="mb-8">
-                    <p class="text-xs text-zinc-500 uppercase tracking-widest font-bold mb-4">Move to Folder</p>
+                <!-- New Folder -->
+                <div class="mb-6">
                     <div class="flex gap-2">
-                        <input x-model="customFolderName" type="text" placeholder="Folder name..." 
-                               class="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500">
-                        <button @click="doMovePhoto('/root/memories-sorted/data/' + customFolderName)" 
+                        <input x-model="customFolderName" type="text" placeholder="New folder name..."
+                               @click.stop
+                               @keydown.enter.stop="doMovePhoto('/root/memories-sorted/data/input/' + customFolderName)"
+                               class="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500">
+                        <button @click.stop="doMovePhoto('/root/memories-sorted/data/input/' + customFolderName)"
                                 :disabled="!customFolderName.trim()"
-                                class="bg-blue-500 text-white px-6 rounded-xl font-bold text-sm disabled:opacity-50 active:scale-95 transition-all">Move</button>
+                                class="bg-blue-500 text-white px-5 rounded-xl font-bold text-sm disabled:opacity-50 active:scale-95 transition-all">Create</button>
                     </div>
                 </div>
 
-                <button @click="lbMoveShow = false" class="w-full py-4 rounded-2xl text-zinc-400 font-bold hover:bg-white/5 transition-colors">Cancel</button>
+                <button @click.stop="lbMoveShow = false" class="w-full py-3 rounded-xl text-zinc-400 font-bold hover:bg-white/5 transition-colors">Cancel</button>
             </div>
         </div>
-    </div>
+
 
     <!-- Modal: New Moment with Photo Select -->
     <div x-show="addMomentOpen" x-cloak class="fixed inset-0 z-[73] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-md" style="display:none">
@@ -663,6 +721,8 @@
         function app() {
             return {
                 tab: 'discover',
+                memoriesFlashback: null,
+                seasonalCard: null,
                 loading: false,
                 allPhotos: [],
                 moments: [],
@@ -715,6 +775,8 @@
                 selectionMode: false,
                 selectedItems: [],
                 customFolderName: '',
+                availableFolders: [],
+                lbAddPhotoPath: null,
                 
                 // Lightbox
                 lbOpen: false,
@@ -795,7 +857,11 @@
                         ]);
                         this.allPhotos = await pRes.json() || [];
                         this.moments = (await mRes.json() || []).sort((a,b) => b.timestamp - a.timestamp);
-                        this.insights = await iRes.json() || [];
+                        const insightsData = await iRes.json() || [];
+                        this.insights = insightsData;
+                        // Extract memory flashback and seasonal cards
+                        this.memoriesFlashback = insightsData.find(i => i.type === 'memory_flashback') || null;
+                        this.seasonalCard = insightsData.find(i => i.type === 'seasonal') || null;
                         const newPeople = await pRegRes.json() || [];
                         // Pre-compute avatarUrl for each person so Alpine gets a plain string
                         for (const p of newPeople) {
@@ -1029,6 +1095,19 @@
                     this.$nextTick(() => lucide.createIcons());
                 },
 
+                async refreshInsights() {
+                    this.flash('Refreshing memories...');
+                    try {
+                        const res = await fetch('/api/insights');
+                        const data = await res.json() || [];
+                        this.insights = data;
+                        this.memoriesFlashback = data.find(i => i.type === 'memory_flashback') || null;
+                        this.seasonalCard = data.find(i => i.type === 'seasonal') || null;
+                        this.flash('Memories updated');
+                    } catch(e) { this.flash('Failed to refresh', 'error'); }
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
                 async doUpload(files) {
                     if (!files || !files.length) return;
                     this.lastUploadedFiles = files; // Store for retry
@@ -1215,21 +1294,36 @@
                     await this.refreshAll();
                 },
 
+                async openMoveModal() {
+                    this.lbAddPhotoPath = this.lbPhotos[this.lbIndex]?.file_path || null;
+                    this.customFolderName = '';
+                    // Load available folders from data/input
+                    try {
+                        const res = await fetch('/api/folders');
+                        const data = await res.json();
+                        this.availableFolders = data.folders || [];
+                    } catch(e) {
+                        this.availableFolders = [];
+                    }
+                    this.lbMoveShow = true;
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
                 async doMovePhoto(target) {
-                    const paths = this.selectionMode ? this.selectedItems : [this.lbPhotos[this.lbIndex]?.file_path];
-                    for (const path of paths) {
-                        if (!path) continue;
+                    const path = this.lbAddPhotoPath || this.lbPhotos[this.lbIndex]?.file_path;
+                    if (!path) return;
+                    try {
                         await fetch('/api/photos/move', {
                             method: 'POST',
                             headers: {'Content-Type': 'application/json'},
                             body: JSON.stringify({ file_path: path, target_folder: target })
                         });
+                        this.lbMoveShow = false;
+                        this.flash('Photo moved');
+                        await this.refreshAll();
+                    } catch(e) {
+                        this.flash('Move failed', 'error');
                     }
-                    this.lbMoveShow = false;
-                    this.lbOpen = false;
-                    this.flash(paths.length > 1 ? 'Photos moved' : 'Photo moved');
-                    this.exitSelection();
-                    await this.refreshAll();
                 },
 
                 async lbSaveCaption() {

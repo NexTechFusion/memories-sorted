@@ -32,6 +32,7 @@ class ImageFaces(BaseModel):
     assignments: List[FaceAssignment] = Field(default_factory=list)
     quality_score: Optional[float] = Field(None, description="NIMA aesthetic quality score (0-10)")
     caption: Optional[str] = Field(None, description="BLIP auto-caption for this image")
+    captured_at: Optional[str] = Field(None, description="Original photo capture date from EXIF")
     
     @property
     def person_ids(self) -> List[str]:

@@ -307,6 +307,21 @@ async def get_people():
 async def get_active_jobs():
     return {jid: job for jid, job in UPLOAD_JOBS.items() if job.get("status") not in ["done", "error"]}
 
+@app.get("/api/folders")
+async def get_folders():
+    """List available folders in data/input."""
+    folders = []
+    input_dir = INPUT_DIR
+    if os.path.exists(input_dir):
+        for name in sorted(os.listdir(input_dir)):
+            full_path = os.path.join(input_dir, name)
+            if os.path.isdir(full_path):
+                folders.append({
+                    "name": name,
+                    "path": full_path
+                })
+    return {"folders": folders}
+
 @app.post("/api/rename")
 async def rename_person(req: RenameRequest):
     """Rename a person in the person_registry."""

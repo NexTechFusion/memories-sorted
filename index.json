@@ -5836,7 +5836,8 @@
         }
       ],
       "quality_score": null,
-      "caption": null
+      "caption": null,
+      "captured_at": "2026-04-02T16:47:37"
     },
     {
       "file_path": "/root/memories-sorted/data/input/1000052293.jpg",
@@ -8528,7 +8529,8 @@
         }
       ],
       "quality_score": null,
-      "caption": null
+      "caption": null,
+      "captured_at": "2026-03-30T19:27:57"
     }
   ]
 }
