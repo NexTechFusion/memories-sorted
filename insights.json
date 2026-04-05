@@ -1,26 +1,30 @@
 [
   {
-    "type": "stories",
-    "title": "Recent Snapshots",
-    "message": "\u2022 a little boy sitting on a bike\n\u2022 a man is taking a picture of a child in a mirror\n\u2022 a man holding a small child in his arms",
-    "icon": "\ud83d\udcdd"
-  },
-  {
-    "type": "status",
-    "title": "Last Memory Captured",
-    "message": "Your last photo was uploaded 13 hours ago.\nYou have 22 photos in your library.",
-    "icon": "\ud83d\udcf8"
+    "type": "relationship",
+    "title": "Dynamic Duo",
+    "message": "[[person:PERSON_545BAF25|Person 545BAF25]] and [[person:PERSON_BD01C367|Liam baby]] are frequently captured together (seen in 1 photos).",
+    "icon": "\ud83d\udc65"
   },
   {
     "type": "favorite",
     "title": "Most Photographed",
-    "message": "Baby appears in 15 face detections.\n\nTop people: Baby: 15, Dom: 6, Person 63E68B81: 2, Person 3E0620D9: 1, Person 1EE488FA: 1",
-    "icon": "\ud83c\udfc6"
+    "message": "Liam baby appears in 3 face detections.\n\nTop people: Liam baby: 3, Paul: 1, Bunu: 1, Person 545BAF25: 1, Person DDB0CF08: 1",
+    "icon": "\ud83c\udfc6",
+    "action": {
+      "type": "person",
+      "id": "PERSON_BD01C367"
+    }
+  },
+  {
+    "type": "reminder",
+    "title": "People Seen Only Once",
+    "message": "You only caught PERSON_7F68A3D1, PERSON_511F653F, PERSON_545BAF25, PERSON_DDB0CF08, PERSON_70505968, PERSON_525AA427 once. Maybe it is time for a reunion?",
+    "icon": "\ud83d\udc4b"
   },
   {
     "type": "stat",
     "title": "Your World in Numbers",
-    "message": "20 unique faces. 22 photos captured.",
+    "message": "7 unique faces. 7 photos captured.",
     "icon": "\ud83c\udf0d"
   }
 ]

@@ -307,6 +307,171 @@ async def get_people():
 async def get_active_jobs():
     return {jid: job for jid, job in UPLOAD_JOBS.items() if job.get("status") not in ["done", "error"]}
 
+@app.post("/api/rename")
+async def rename_person(req: RenameRequest):
+    """Rename a person in the person_registry."""
+    if not os.path.exists(INDEX_PATH):
+        raise HTTPException(status_code=404, detail="Index not found")
+    with open(INDEX_PATH) as f:
+        data = json.load(f)
+    registry = data.get("person_registry", {})
+    if req.person_id not in registry:
+        raise HTTPException(status_code=404, detail=f"Person {req.person_id} not found")
+    registry[req.person_id]["name"] = req.new_name
+    with open(INDEX_PATH, 'w') as f:
+        json.dump(data, f, indent=2)
+    # Also purge cached premium crop so it regenerates if needed
+    cache_path = os.path.join(PREMIUM_DIR, f"{req.person_id}.jpg")
+    if os.path.exists(cache_path):
+        os.remove(cache_path)
+    _refresh_insights()
+    _refresh_moments()
+    return {"status": "ok", "person_id": req.person_id, "new_name": req.new_name}
+
+@app.post("/api/person/delete")
+async def delete_person(req: DeletePersonRequest):
+    """Remove a person from the registry and unassign their faces."""
+    if not os.path.exists(INDEX_PATH):
+        raise HTTPException(status_code=404, detail="Index not found")
+    with open(INDEX_PATH) as f:
+        data = json.load(f)
+    registry = data.get("person_registry", {})
+    if req.person_id not in registry:
+        raise HTTPException(status_code=404, detail=f"Person {req.person_id} not found")
+    # Remove from registry
+    del registry[req.person_id]
+    # Remove all assignments for this person
+    for photo in data.get("image_catalog", []):
+        photo["assignments"] = [a for a in photo.get("assignments", []) if a.get("person_id") != req.person_id]
+    with open(INDEX_PATH, 'w') as f:
+        json.dump(data, f, indent=2)
+    # Clean cached crop
+    cache_path = os.path.join(PREMIUM_DIR, f"{req.person_id}.jpg")
+    if os.path.exists(cache_path):
+        os.remove(cache_path)
+    _refresh_insights()
+    _refresh_moments()
+    return {"status": "ok", "person_id": req.person_id}
+
+@app.post("/api/moment/rename")
+async def rename_moment(req: MomentRenameRequest):
+    """Rename a moment."""
+    if not os.path.exists(MOMENTS_PATH):
+        raise HTTPException(status_code=404, detail="Moments not found")
+    with open(MOMENTS_PATH) as f:
+        moments = json.load(f)
+    found = False
+    for m in moments:
+        if m.get("id") == req.moment_id:
+            m["label"] = req.new_label
+            found = True
+            break
+    if not found:
+        raise HTTPException(status_code=404, detail=f"Moment {req.moment_id} not found")
+    with open(MOMENTS_PATH, 'w') as f:
+        json.dump(moments, f, indent=2)
+    return {"status": "ok", "moment_id": req.moment_id, "new_label": req.new_label}
+
+@app.post("/api/moment/delete")
+async def delete_moment(req: MomentDeleteRequest):
+    """Delete a moment."""
+    if not os.path.exists(MOMENTS_PATH):
+        raise HTTPException(status_code=404, detail="Moments not found")
+    with open(MOMENTS_PATH) as f:
+        moments = json.load(f)
+    moments = [m for m in moments if m.get("id") != req.moment_id]
+    with open(MOMENTS_PATH, 'w') as f:
+        json.dump(moments, f, indent=2)
+    return {"status": "ok", "moment_id": req.moment_id}
+
+@app.post("/api/caption")
+async def caption_photo(req: PhotoCaptionRequest):
+    """Add/edit a caption for a photo."""
+    if not os.path.exists(INDEX_PATH):
+        raise HTTPException(status_code=404, detail="Index not found")
+    with open(INDEX_PATH) as f:
+        data = json.load(f)
+    for photo in data.get("image_catalog", []):
+        if photo.get("file_path") == req.file_path:
+            photo["caption"] = req.caption
+            with open(INDEX_PATH, 'w') as f:
+                json.dump(data, f, indent=2)
+            return {"status": "ok", "file_path": req.file_path}
+    raise HTTPException(status_code=404, detail="Photo not found")
+
+@app.post("/api/photo/move")
+async def move_photo(req: PhotoMoveRequest):
+    """Move a photo file to another folder."""
+    src = req.file_path
+    target_dir = os.path.join(INPUT_DIR, req.target_folder)
+    if not os.path.exists(src):
+        raise HTTPException(status_code=404, detail="Source file not found")
+    os.makedirs(target_dir, exist_ok=True)
+    dest = os.path.join(target_dir, os.path.basename(src))
+    shutil.move(src, dest)
+    # Update index
+    if os.path.exists(INDEX_PATH):
+        with open(INDEX_PATH) as f:
+            data = json.load(f)
+        for photo in data.get("image_catalog", []):
+            if photo.get("file_path") == src:
+                photo["file_path"] = dest
+                break
+        with open(INDEX_PATH, 'w') as f:
+            json.dump(data, f, indent=2)
+    return {"status": "ok", "new_path": dest}
+
+@app.post("/api/photo/delete")
+async def delete_photo(req: PhotoDeleteRequest):
+    """Delete a photo file and remove from index."""
+    if os.path.exists(req.file_path):
+        os.remove(req.file_path)
+    if os.path.exists(INDEX_PATH):
+        with open(INDEX_PATH) as f:
+            data = json.load(f)
+        data["image_catalog"] = [p for p in data.get("image_catalog", []) if p.get("file_path") != req.file_path]
+        with open(INDEX_PATH, 'w') as f:
+            json.dump(data, f, indent=2)
+    _refresh_insights()
+    _refresh_moments()
+    return {"status": "ok", "file_path": req.file_path}
+
+@app.post("/api/moment/create")
+async def create_moment(req: MomentCreateRequest):
+    """Create a new moment manually."""
+    if os.path.exists(MOMENTS_PATH):
+        with open(MOMENTS_PATH) as f:
+            moments = json.load(f)
+    else:
+        moments = []
+    moment = {
+        "id": str(uuid.uuid4()),
+        "label": req.label,
+        "photo_paths": req.photo_paths,
+        "member_paths": req.member_paths or [],
+        "created_at": datetime.datetime.now().isoformat()
+    }
+    moments.append(moment)
+    with open(MOMENTS_PATH, 'w') as f:
+        json.dump(moments, f, indent=2)
+    return {"status": "ok", "moment": moment}
+
+@app.post("/api/moment/add-photo")
+async def add_photo_to_moment(req: MomentAddPhotoRequest):
+    """Add a photo to an existing moment."""
+    if not os.path.exists(MOMENTS_PATH):
+        raise HTTPException(status_code=404, detail="Moments not found")
+    with open(MOMENTS_PATH) as f:
+        moments = json.load(f)
+    for m in moments:
+        if m.get("id") == req.moment_id:
+            if req.photo_path not in m.get("photo_paths", []):
+                m.setdefault("photo_paths", []).append(req.photo_path)
+            with open(MOMENTS_PATH, 'w') as f:
+                json.dump(moments, f, indent=2)
+            return {"status": "ok", "moment_id": req.moment_id}
+    raise HTTPException(status_code=404, detail=f"Moment {req.moment_id} not found")
+
 @app.get("/api/moments")
 async def get_moments():
     if os.path.exists(MOMENTS_PATH):

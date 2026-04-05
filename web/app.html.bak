@@ -4,536 +4,1322 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Memories AI</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.tailwindcss.com?_v=2"></script>
+    <script src="https://unpkg.com/alpinejs@3.x.x" defer></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <script>tailwind.config={darkMode:'class',theme:{extend:{colors:{dark:{100:'#1a1a1e',200:'#121215',300:'#09090b'},zinc:{850:'#1c1c20'}}}}}</script>
     <style>
-        [x-cloak]{display:none!important}
-        .hide-scroll::-webkit-scrollbar{display:none}
-        .card-bento{background:#121215;border:1px solid #1e1e24;border-radius:20px}
-        .line-clamp-3{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-        @keyframes fadeIn{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)}}
-        @keyframes toastUp{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
-        .anim-fade{animation:fadeIn .2s ease-out}
-        .toast-anim{animation:toastUp .3s ease-out}
+        [x-cloak] { display: none !important; }
+        .scrollbar-none::-webkit-scrollbar { display: none; }
+        .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
+        @keyframes toastUp { from { transform: translate(-50%, 20px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+        .toast-anim { animation: toastUp .3s ease-out; }
+        .bento-card { background: rgba(24, 24, 27, 0.4); border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(12px); }
     </style>
 </head>
-<body class="bg-black text-white font-sans antialiased">
-<!-- Toast -->
-<div x-show="toast.show" x-transition.duration.300ms class="fixed top-16 left-1/2 z-[9999] px-4 py-2 rounded-full text-sm font-medium toast-anim shadow-2xl"
-     :class="toast.type==='error'?'bg-red-500/90 text-white':'bg-zinc-800/90 text-white border border-zinc-700'" x-text="toast.text"></div>
+<body x-data="app()" x-init="init()" class="bg-[#09090b] text-white font-sans antialiased overflow-x-hidden">
 
-<!-- Moment Edit Modal (rename label) -->
-<div x-show="momentEdit.show" x-cloak class="fixed inset-0 z-[75] flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm" @keydown.escape="momentEdit.show=false">
-    <div class="bg-[#1c1c20] border border-zinc-800 w-full max-w-sm rounded-2xl p-6 anim-fade">
-        <h3 class="text-base font-bold mb-3" x-text="''+momentEdit.action.charAt(0).toUpperCase()+momentEdit.action.slice(1)+' Moment'"></h3>
-        <input x-model="momentEdit.input" @keydown.enter="doMomentEdit()" type="text" class="w-full bg-black border border-zinc-700 rounded-xl py-3 px-4 mb-4 outline-none focus:border-blue-500" autofocus>
-        <div class="flex gap-2">
-            <button @click="momentEdit.show=false" class="flex-1 bg-zinc-700 hover:bg-zinc-600 text-sm font-medium py-2.5 rounded-xl">Cancel</button>
-            <button @click="doMomentEdit()" class="flex-1 bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl">Save</button>
-        </div>
-    </div>
-</div>
-
-<!-- Add Moment Modal -->
-<!-- Add Moment Modal -->
-<div x-show="rnOpen" x-cloak class="fixed inset-0 z-[75] flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm" @keydown.escape.window="rnOpen=false">
-    <div class="bg-[#1c1c20] border border-zinc-800 w-full max-w-sm rounded-2xl p-6 anim-fade" @click.away="rnOpen=false">
-        <h3 class="text-base font-bold mb-3">Rename Person</h3>
-        <input x-model="rnInput" @keydown.enter="doRename()" type="text" class="w-full bg-black border border-zinc-700 rounded-xl py-3 px-4 mb-4 outline-none focus:border-blue-500" placeholder="Enter new name..." x-ref="rnField">
-        <div class="flex gap-2">
-            <button @click="rnOpen=false" class="flex-1 bg-zinc-700 hover:bg-zinc-600 text-sm font-medium py-2.5 rounded-xl">Cancel</button>
-            <button @click="doRename()" class="flex-1 bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl">Save</button>
-        </div>
-    </div>
-</div>
-
-<!-- Move Photo Modal -->
-<div x-show="lbMoveShow" x-cloak class="fixed inset-0 z-[150] flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm" @keydown.escape.window="lbMoveShow=false">
-    <div class="bg-[#1c1c20] border border-zinc-800 w-full max-w-sm rounded-2xl p-5 anim-fade" @click.away="lbMoveShow=false">
-        <h3 class="text-base font-bold mb-3">Move Photo to Folder</h3>
-        <div class="space-y-2 mb-4">
-            <button @click="doMovePhoto('data/input/photos')" class="w-full text-left px-4 py-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm flex items-center gap-3"><i data-lucide="image" class="w-4 h-4 text-zinc-500"></i><span>Photos (general)</span></button>
-            <button @click="doMovePhoto('data/input/family')" class="w-full text-left px-4 py-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm flex items-center gap-3"><i data-lucide="users" class="w-4 h-4 text-blue-400"></i><span>Family</span></button>
-            <button @click="doMovePhoto('data/input/travel')" class="w-full text-left px-4 py-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm flex items-center gap-3"><i data-lucide="map-pin" class="w-4 h-4 text-green-400"></i><span>Travel</span></button>
-            <button @click="doMovePhoto('data/input/events')" class="w-full text-left px-4 py-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-sm flex items-center gap-3"><i data-lucide="calendar" class="w-4 h-4 text-purple-400"></i><span>Events</span></button>
-        </div>
-        <button @click="lbMoveShow=false" class="w-full bg-zinc-700 hover:bg-zinc-600 text-sm font-medium py-2.5 rounded-xl">Cancel</button>
-    </div>
-</div>
-
-<!-- Delete Photo Modal -->
-<div x-show="lbDeleteShow" x-cloak class="fixed inset-0 z-[75] flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm" @keydown.escape="lbDeleteShow=false">
-    <div class="bg-[#1c1c20] border border-zinc-800 w-full max-w-sm rounded-2xl p-6 anim-fade" @click.away="lbDeleteShow=false">
-        <h3 class="text-base font-bold mb-3 text-red-400">Delete Photo?</h3>
-        <p class="text-sm text-zinc-400 mb-5 leading-relaxed">This will permanently delete <span class="text-zinc-200" x-text="lbPhoto?lbPhoto.file_path.split('/').pop():''"></span></p>
-        <div class="flex gap-2">
-            <button @click="lbDeleteShow=false" class="flex-1 bg-zinc-700 hover:bg-zinc-600 text-sm font-medium py-2.5 rounded-xl">Cancel</button>
-            <button @click="doDeletePhoto()" class="flex-1 bg-red-500 hover:bg-red-600 text-white text-sm font-semibold py-2.5 rounded-xl">Delete</button>
-        </div>
-    </div>
-</div>
-
-<!-- Add Moment Modal -->
-<div x-show="addMomentOpen" x-cloak class="fixed inset-0 z-[75] flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm" @keydown.escape="addMomentOpen=false">
-    <div class="bg-[#1c1c20] border border-zinc-800 w-full max-w-sm rounded-2xl p-6 anim-fade" @click.away="addMomentOpen=false">
-        <h3 class="text-base font-bold mb-3">Create New Moment</h3>
-        <p class="text-xs text-zinc-500 mb-3 leading-relaxed">Group your photos together. AI will label them automatically if you leave it blank.</p>
-        <input x-model="newMomentLabel" @keydown.enter="doAddMoment()" type="text" class="w-full bg-black border border-zinc-700 rounded-xl py-3 px-4 mb-4 outline-none focus:border-blue-500" placeholder="e.g. Beach Day, Christmas 2025" x-ref="momentField">
-        <p class="text-xs text-zinc-600 mb-4">Recent photos will be included. You can also just let AI auto-generate.</p>
-        <div class="flex gap-2">
-            <button @click="addMomentOpen=false" class="flex-1 bg-zinc-700 hover:bg-zinc-600 text-sm font-medium py-2.5 rounded-xl">Cancel</button>
-            <button @click="doAddMoment()" class="flex-1 bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl">Create</button>
-        </div>
-    </div>
-</div>
-
-<!-- Confirm Modal -->
-<div x-show="confirm.show" x-cloak class="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" @keydown.escape="confirm.show=false">
-    <div class="bg-[#1c1c20] border border-zinc-800 w-full max-w-sm rounded-2xl p-6 anim-fade">
-        <h3 class="text-base font-bold mb-3" x-text="confirm.title||'Confirm'"></h3>
-        <p class="text-sm text-zinc-400 mb-5 leading-relaxed" x-text="confirm.message"></p>
-        <div class="flex gap-2">
-            <button @click="confirm.show=false" class="flex-1 bg-zinc-700 hover:bg-zinc-600 text-sm font-medium py-2.5 rounded-xl">Cancel</button>
-            <button @click="confirm.onConfirm();confirm.show=false" class="flex-1 bg-red-500 hover:bg-red-600 text-white text-sm font-semibold py-2.5 rounded-xl" x-text="confirm.okText||'Confirm'"></button>
-        </div>
-    </div>
-</div>
-
-<!-- Moment Edit Modal (rename label) -->
-
-<div x-data="app()" x-init="init()" class="max-w-2xl mx-auto min-h-screen relative" style="padding-bottom:80px">
-
-<!-- ===== DISCOVER ===== -->
-<div x-show="tab==='home'">
-    <header class="px-6 pt-14 pb-4 flex items-end justify-between sticky top-0 z-20" style="background:linear-gradient(to bottom,#000 60%,transparent)">
-        <div><h1 class="text-2xl font-bold tracking-tight">Discover</h1><p class="text-zinc-500 text-sm mt-0.5">Sorted by face. Understood by AI.</p></div>
-        <button @click="refreshAll()" class="bg-zinc-800/50 p-2 rounded-full hover:bg-zinc-700"><i data-lucide="refresh-cw" class="w-5 h-5 text-zinc-400" :class="loading?'animate-spin':''"></i></button>
-    </header>
-    <!-- Insights -->
-    <div class="px-4 mb-6 grid grid-cols-2 gap-3">
-        <template x-for="(ins,i) in insights" :key="i">
-            <div @click="expIns=expIns===i?null:i" class="card-bento p-4 cursor-pointer" style="transition:transform .15s" @mousedown="$el.style.transform='scale(0.95)'" @mouseup="$el.style.transform=''" @mouseleave="$el.style.transform=''">
-                <i :data-lucide="ins.icon==='🏆'?'trophy':ins.icon==='📸'?'camera':ins.icon==='🌍'?'globe-2':'sparkles'" class="w-5 h-5 text-blue-400 mb-2"></i>
-                <p class="text-xs text-zinc-400 leading-relaxed whitespace-pre-wrap" :class="expIns===i?'':'line-clamp-3'" x-text="ins.message"></p>
-                <span x-show="ins.message.length>50&&expIns!==i" class="text-[10px] text-blue-400 mt-1 inline-block">Tap to read</span>
-            </div>
-        </template>
-    </div>
-    <!-- Top Rated -->
-    <div x-show="topPhotos.length" class="px-4 mb-6">
-        <div class="flex justify-between items-center mb-3"><h2 class="text-lg font-semibold">Top Rated</h2><span class="text-xs text-zinc-500" x-text="topPhotos.length+' photos'"></span></div>
-        <div class="flex gap-3 overflow-x-auto hide-scroll pb-2" style="-webkit-mask-image:linear-gradient(to right,black 85%,transparent 100%)">
-            <template x-for="img in topPhotos" :key="img.file_path">
-                <div @click="lightboxOpenFromList(getPhotoIdx(img))" class="flex-shrink-0 w-32 h-48 rounded-2xl overflow-hidden relative border border-zinc-800/50 cursor-pointer" style="transition:transform .15s" @mousedown="$el.style.transform='scale(0.95)'" @mouseup="$el.style.transform=''" @mouseleave="$el.style.transform=''">
-                    <img :src="imgThumb(img)" class="w-full h-full object-cover opacity-90 hover:opacity-100" loading="lazy">
-                    <div class="absolute top-2 right-2 bg-green-500/90 text-[10px] font-bold px-1.5 py-0.5 rounded-md" x-text="(img.quality_score||0).toFixed(1)"></div>
-                </div>
-            </template>
-        </div>
-    </div>
-    <!-- People -->
-    <div class="px-4 mb-8">
-        <h2 class="text-lg font-semibold mb-3">Your People</h2>
-        <div class="grid grid-cols-6 gap-3">
-            <template x-for="p in people" :key="p.id">
-                <button @click="viewPersonGallery(p)" class="flex flex-col items-center gap-1 group" style="transition:transform .15s" @mousedown="$el.style.transform='scale(0.95)'" @mouseup="$el.style.transform=''" @mouseleave="$el.style.transform=''">
-                        <div class="w-12 h-12 rounded-full overflow-hidden border-2 border-zinc-800 group-hover:border-blue-500 transition-colors bg-zinc-800">
-                            <img :src="p.avatarUrl" class="w-full h-full object-cover" alt="" @error="$el.style.display='none';$el.nextElementSibling.style.display='flex'" :style="p.avatarUrl?'':'display:none'">
-                            <span class="w-full h-full bg-zinc-800 flex items-center justify-center text-zinc-500 font-bold text-[10px]" x-text="(p.display||'?').substring(0,2)" :style="p.avatarUrl?'display:none':''"></span>
-                        </div>
-                    <span class="text-[9px] text-zinc-400 truncate w-12 text-center" x-text="p.display"></span>
-                </button>
-            </template>
-        </div>
-    </div>
-</div>
-
-<!-- ===== MOMENTS ===== -->
-<div x-show="tab==='moments'" x-cloak>
-    <div class="px-6 pt-14 pb-4 border-b border-zinc-800/50 sticky top-0 z-20" style="background:rgba(0,0,0,0.9);backdrop-filter:blur(16px)">
-        <div class="flex items-end justify-between gap-2">
-            <div><h1 class="text-2xl font-bold tracking-tight">Moments</h1><p class="text-zinc-500 text-sm mt-0.5" x-show="moments.length" x-text="moments.length+' moments found'"></p></div>
-            <button @click="confirmAction('Regenerate moments from scratch using current photos? This will replace all current moments.','regenerateMoments')" class="bg-zinc-800/50 px-3 py-1.5 rounded-lg text-xs text-zinc-400 hover:text-white flex items-center gap-1"><i data-lucide="refresh-ccw" class="w-3.5 h-3.5"></i>Refresh</button>
-            <button @click="addMomentOpen=true;newMomentLabel='';$nextTick(()=>{if($refs.momentField)$refs.momentField.focus()})" class="bg-blue-500/20 px-3 py-1.5 rounded-lg text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"><i data-lucide="plus" class="w-3.5 h-3.5"></i>New</button>
-        </div>
-    </div>
-    <div class="px-4 pt-4 pb-24 space-y-6">
-        <template x-for="m in moments" :key="m.id">
-            <div class="card-bento overflow-hidden relative group">
-                <!-- Long press context menu -->
-                <div @click="openMomentGallery(m)" class="cursor-pointer relative" style="transition:transform .15s" @mousedown="mgCtxStart($event,m,'img')" @mouseup="mgCtxEnd()" @mouseleave="mgCtxEnd()">
-                    <img :src="imgThumb(m)" class="w-full h-52 object-cover" loading="lazy">
-                    <div class="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div>
-                    <div class="absolute bottom-3 left-4 right-4 flex justify-between items-end">
-                        <div><h3 class="capitalize font-semibold text-lg text-white" x-text="m.label"></h3><p class="text-xs text-zinc-300" x-text="getMomentDateRange(m)"></p></div>
-                        <span class="bg-blue-500/20 text-blue-300 text-xs font-semibold px-2.5 py-1 rounded-full" x-text="m.count+' photos'"></span>
+    <!-- Onboarding Flow -->
+    <div x-show="showOnboarding" x-cloak class="fixed inset-0 z-[500] bg-black/90 backdrop-blur-2xl flex items-center justify-center p-6 text-center">
+        <div class="max-w-sm w-full animate-in zoom-in-95 duration-300">
+            <template x-if="onboardingStep === 1">
+                <div>
+                    <div class="w-24 h-24 bg-blue-500/20 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-blue-500/20">
+                        <i data-lucide="sparkles" class="w-12 h-12 text-blue-400"></i>
                     </div>
+                    <h2 class="text-3xl font-black mb-4">Welcome to Zaiya</h2>
+                    <p class="text-zinc-400 leading-relaxed mb-10">Your memories, understood and organized by local AI. Privacy first, always.</p>
+                    <button @click="onboardingStep = 2" class="w-full py-4 bg-blue-500 text-white font-bold rounded-2xl shadow-xl shadow-blue-500/20 active:scale-95 transition-all">Next</button>
                 </div>
-                <!-- Edit overlay button (top-right) -->
-                <button @click.stop="showMomentMenu(m)" class="absolute top-2 right-2 p-1.5 bg-black/50 rounded-full opacity-60 hover:opacity-100"><i data-lucide="more-vertical" class="w-4 h-4"></i></button>
-                <!-- Context Menu -->
-                <div x-show="m.__menu" class="absolute top-10 right-2 z-40 bg-zinc-800 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden min-w-[180px]" @click.away="m.__menu=false">
-                    <button @click="editMomentLabel(m)" class="w-full px-4 py-2.5 text-sm text-left hover:bg-zinc-700 flex items-center gap-2.5"><i data-lucide="pencil" class="w-4 h-4 text-zinc-400"></i><span>Rename</span></button>
-                    <button @click="openMomentGallery(m);m.__menu=false" class="w-full px-4 py-2.5 text-sm text-left hover:bg-zinc-700 flex items-center gap-2.5"><i data-lucide="grid-3x3" class="w-4 h-4 text-zinc-400"></i><span>View photos</span></button>
-                    <button @click="confirmAction('Delete this moment permanently? Photos will not be deleted.','deleteMoment::'+m.id)" class="w-full px-4 py-2.5 text-sm text-left text-red-400 hover:bg-zinc-700 flex items-center gap-2.5"><i data-lucide="trash-2" class="w-4 h-4"></i><span>Delete</span></button>
+            </template>
+            <template x-if="onboardingStep === 2">
+                <div>
+                    <div class="w-24 h-24 bg-purple-500/20 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-purple-500/20">
+                        <i data-lucide="brain-circuit" class="w-12 h-12 text-purple-400"></i>
+                    </div>
+                    <h2 class="text-3xl font-black mb-4">AI Magic</h2>
+                    <p class="text-zinc-400 leading-relaxed mb-10">Zaiya scans your photos to recognize faces, generate captions, and group moments automatically.</p>
+                    <button @click="onboardingStep = 3" class="w-full py-4 bg-purple-500 text-white font-bold rounded-2xl shadow-xl shadow-purple-500/20 active:scale-95 transition-all">Tell me more</button>
+                </div>
+            </template>
+            <template x-if="onboardingStep === 3">
+                <div>
+                    <div class="w-24 h-24 bg-green-500/20 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-green-500/20">
+                        <i data-lucide="shield-check" class="w-12 h-12 text-green-400"></i>
+                    </div>
+                    <h2 class="text-3xl font-black mb-4">Local & Private</h2>
+                    <p class="text-zinc-400 leading-relaxed mb-10">No cloud. No tracking. Everything stays on your machine. Your data is yours.</p>
+                    <button @click="completeOnboarding()" class="w-full py-4 bg-green-500 text-white font-bold rounded-2xl shadow-xl shadow-green-500/20 active:scale-95 transition-all">Get Started</button>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <!-- Toast Component -->
+    <div x-show="toast.show" x-transition.duration.300ms 
+         class="fixed top-16 left-1/2 -translate-x-1/2 z-[9999] px-6 py-3 rounded-full text-sm font-semibold toast-anim shadow-2xl border border-white/10"
+         :class="toast.type==='error'?'bg-red-500/90':'bg-zinc-800/90'" x-text="toast.text"></div>
+
+    <!-- Upload Progress Bento -->
+    <div x-show="uploading" x-cloak x-transition.opacity class="fixed bottom-24 left-4 right-4 z-[90]">
+        <div class="bento-card rounded-2xl p-4 shadow-2xl flex items-center gap-4 border-blue-500/20">
+            <div class="w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center relative overflow-hidden">
+                <template x-if="uploadPreview">
+                    <img :src="uploadPreview" class="absolute inset-0 w-full h-full object-cover rounded-full opacity-50">
+                </template>
+                <i data-lucide="upload-cloud" class="w-5 h-5 text-blue-400 animate-pulse relative z-10" x-show="uploadStatus === 'uploading'"></i>
+                <i data-lucide="cpu" class="w-5 h-5 text-purple-400 animate-spin relative z-10" x-show="uploadStatus !== 'uploading' && uploadStatus !== 'done' && uploadStatus !== 'error'"></i>
+                <i data-lucide="check" class="w-5 h-5 text-green-400 relative z-10" x-show="uploadStatus === 'done'"></i>
+                <i data-lucide="alert-circle" class="w-5 h-5 text-red-400 relative z-10" x-show="uploadStatus === 'error'"></i>
+            </div>
+            <div class="flex-1">
+                <div class="flex justify-between items-center mb-1">
+                    <p class="text-[10px] text-zinc-500 uppercase tracking-widest font-bold" 
+                       x-text="getProcessLabel()"></p>
+                    <p class="text-[10px] font-bold text-zinc-400" x-show="uploadStatus === 'uploading'" x-text="uploadProgress + '%'"></p>
+                </div>
+                <div class="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
+                    <div class="bg-blue-500 h-full transition-all duration-300" 
+                         :class="uploadStatus !== 'uploading' ? 'bg-purple-500 animate-pulse' : ''"
+                         :style="'width:' + (uploadStatus === 'uploading' ? uploadProgress : 100) + '%'"></div>
                 </div>
             </div>
-        </template>
-        <div x-show="!moments.length&&!loading" class="text-center text-zinc-600 py-24">
-            <p class="text-lg mb-2">No moments yet</p>
-            <p class="text-sm">Upload more photos or refresh to regenerate</p>
         </div>
     </div>
-</div>
 
-<!-- ===== PEOPLE ===== -->
-<div x-show="tab==='people'" x-cloak>
-    <div class="px-6 pt-14 pb-4 sticky top-0 z-20" style="background:rgba(0,0,0,0.9);backdrop-filter:blur(16px)">
-        <div class="relative mb-3">
-            <input x-model="searchQ" @input.debounce.400ms="doSearch()" type="text" placeholder="Search faces, objects, captions..." class="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-2.5 px-4 pl-10 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 outline-none">
-            <i data-lucide="search" class="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
-            <button x-show="searchQ" @click="searchQ='';searchRes=null" class="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
-        </div>
-        <h1 class="text-xl font-bold" x-show="!searchQ">People <span class="text-zinc-500 text-sm font-normal" x-text="people.length"></span></h1>
-        <h1 class="text-lg font-semibold" x-show="searchQ" x-text="'Results'"></h1>
-    </div>
-    <template x-if="searchRes!==null">
-        <div class="px-4 pt-2 pb-24">
-            <p class="text-xs text-zinc-500 mb-2" x-text="(searchRes||[]).length+' photos found'"></p>
-            <div class="columns-3 gap-2">
-                <template x-for="r in (searchRes||[])" :key="r.image_path">
-                    <div @click="lightboxOpenFromList(findPhotoIdx(r.image_path))" class="mb-2 break-inside-avoid rounded-xl overflow-hidden cursor-pointer" style="transition:transform .15s" @mousedown="$el.style.transform='scale(0.95)'" @mouseup="$el.style.transform=''" @mouseleave="$el.style.transform=''">
-                        <img :src="'/images/'+r.image_path.split('/').pop()" class="w-full h-auto object-cover" loading="lazy">
+    <!-- Main Navigation Content -->
+    <main class="pb-32 min-h-screen">
+        
+        <!-- Tab: Discover -->
+        <div x-show="tab === 'discover'" x-cloak class="p-6 max-w-2xl mx-auto">
+            <header class="mb-8 pt-4">
+                <h1 class="text-4xl font-black tracking-tight mb-2">Discover</h1>
+                <p class="text-zinc-500 font-medium">Sorted by face. Understood by AI.</p>
+            </header>
+
+            <!-- Empty State -->
+            <template x-if="allPhotos.length === 0">
+                <div class="flex flex-col items-center justify-center py-20 text-center">
+                    <div class="w-20 h-20 bg-zinc-900 rounded-full flex items-center justify-center mb-4 border border-white/5">
+                        <i data-lucide="image" class="w-10 h-10 text-zinc-700"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-zinc-300">No Memories Yet</h3>
+                    <p class="text-zinc-500 max-w-xs mx-auto mt-2">Upload your first photos to let the AI organize your world.</p>
+                </div>
+            </template>
+
+            <!-- AI Insights Carousel -->
+            <div x-show="insights.length > 0" class="flex gap-4 overflow-x-auto pb-8 -mx-6 px-6 scrollbar-none">
+                <template x-for="insight in insights" :key="insight.type">
+                    <div class="bento-card p-5 rounded-3xl min-w-[300px] max-w-[300px] flex flex-col justify-between transition-all hover:border-blue-500/20">
+                        <div>
+                            <div class="flex items-center gap-3 mb-4">
+                                <div class="w-12 h-12 rounded-2xl bg-blue-500/10 flex items-center justify-center text-xl overflow-hidden shadow-inner ring-1 ring-white/5">
+                                    <template x-if="insight.action && insight.action.type === 'person'">
+                                        <img :src="getLiftedUrl(insight.action.id)" class="w-full h-full object-contain drop-shadow-xl scale-110">
+                                    </template>
+                                    <template x-if="!insight.action || insight.action.type !== 'person'">
+                                        <span x-text="insight.icon"></span>
+                                    </template>
+                                </div>
+                                <h3 class="font-bold text-white tracking-tight" x-text="insight.title"></h3>
+                            </div>
+                            <p class="text-sm text-zinc-400 leading-relaxed whitespace-pre-line" x-html="renderInsightMessage(insight.message)"></p>
+                        </div>
                     </div>
                 </template>
             </div>
-            <div x-show="!searchRes.length" class="text-center text-zinc-600 py-20 text-sm">No results for your query</div>
-        </div>
-    </template>
-    <div x-show="!searchQ&&searchRes===null" class="px-4 pt-2 pb-24">
-        <div class="grid grid-cols-2 gap-3">
-            <template x-for="p in people" :key="p.id">
-                <div class="card-bento p-4 flex flex-col items-center text-center relative">
-                    <!-- Edit menu -->
-                    <button @click.stop="p.__menu=!p.__menu" class="absolute top-2 right-2 p-1.5 bg-black/30 rounded-full opacity-50 hover:opacity-100"><i data-lucide="more-vertical" class="w-3.5 h-3.5"></i></button>
-                    <div x-show="p.__menu" class="absolute top-9 right-2 z-30 bg-zinc-800 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden min-w-[150px]" @click.away="p.__menu=false">
-                        <button @click.stop="openRename(p);p.__menu=false" class="w-full px-3 py-2 text-sm text-left hover:bg-zinc-700 flex items-center gap-2"><i data-lucide="pencil" class="w-3.5 h-3.5 text-zinc-400"></i><span>Rename</span></button>
-                        <button @click.stop="confirmAction('Merge '+p.display+' into... (select target in next step)','mergeInit::'+p.id)" class="w-full px-3 py-2 text-sm text-left hover:bg-zinc-700 flex items-center gap-2"><i data-lucide="git-merge" class="w-3.5 h-3.5 text-blue-400"></i><span>Merge</span></button>
-                        <button @click.stop="confirmAction('Delete '+p.display+'? Photos keep their faces but this person will be removed.','deletePerson::'+p.id)" class="w-full px-3 py-2 text-sm text-left text-red-400 hover:bg-zinc-700 flex items-center gap-2"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i><span>Delete</span></button>
-                    </div>
-                        <div class="w-20 h-20 rounded-full overflow-hidden border-2 border-zinc-700 mb-3 bg-zinc-800">
-                            <img :src="p.avatarUrl" class="w-full h-full object-cover" alt="" @error="$el.style.display='none';$el.nextElementSibling.style.display='flex'" :style="p.avatarUrl?'':'display:none'">
-                            <span class="w-full h-full flex items-center justify-center text-zinc-500 font-bold text-2xl" x-text="(p.display||'?').substring(0,2)" :style="p.avatarUrl?'display:none':''"></span>
-                        </div>
-                    <h3 class="font-semibold truncate w-full" x-text="p.display"></h3>
-                    <p class="text-xs text-zinc-500 mt-0.5" x-text="p.face_count+' photos'"></p>
-                    <div class="flex gap-2 mt-4 w-full">
-                        <button @click.stop="viewTimeline(p)" class="flex-1 bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold py-2 rounded-lg transition-colors">Timeline</button>
-                        <button @click.stop="viewPersonGallery(p)" class="flex-1 bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold py-2 rounded-lg transition-colors">Gallery</button>
-                    </div>
-                </div>
-            </template>
-        </div>
-    </div>
-</div>
 
-<!-- ===== SETTINGS ===== -->
-<div x-show="tab==='settings'" x-cloak>
-    <div class="px-6 pt-14 pb-4 sticky top-0 z-20 border-b border-zinc-800/50" style="background:rgba(0,0,0,0.9);backdrop-filter:blur(16px)">
-        <h1 class="text-2xl font-bold tracking-tight">Settings</h1>
-    </div>
-    <div class="px-4 pt-4 pb-24 space-y-4">
-        <!-- Moments -->
-        <div class="card-bento overflow-hidden">
-            <div class="px-4 py-3 border-b border-zinc-800/50"><h3 class="text-sm font-semibold text-zinc-300">Moments</h3></div>
-            <button @click="confirmAction('Regenerate all moments from scratch?','regenerateMoments')" class="w-full px-4 py-3 text-left hover:bg-zinc-800/30 flex justify-between items-center">
-                <span class="text-sm"><i data-lucide="refresh-ccw" class="w-4 h-4 inline mr-2 text-blue-400"></i>Regenerate moments</span>
-                <i data-lucide="chevron-right" class="w-4 h-4 text-zinc-500"></i></button>
-        </div>
-        <!-- Data -->
-        <div class="card-bento overflow-hidden">
-            <div class="px-4 py-3 border-b border-zinc-800/50"><h3 class="text-sm font-semibold text-zinc-300">Data & Cache</h3></div>
-            <button @click="confirmAction('Delete all cached face thumbnails?','clearFaces')" class="w-full px-4 py-3 text-left hover:bg-zinc-800/30 flex justify-between items-center">
-                <span class="text-sm text-orange-400"><i data-lucide="trash-2" class="w-4 h-4 inline mr-2"></i>Clear face cache</span>
-                <i data-lucide="chevron-right" class="w-4 h-4 text-zinc-500"></i></button>
-        </div>
-        <!-- Merge People -->
-        <div class="card-bento overflow-hidden">
-            <div class="px-4 py-3 border-b border-zinc-800/50"><h3 class="text-sm font-semibold text-zinc-300">Merge People</h3></div>
-            <p class="px-4 py-2 text-xs text-zinc-500">Tap the "⋮" menu on any person card in the People tab and select "Merge"</p>
-        </div>
-        <!-- About -->
-        <div class="card-bento p-4">
-            <p class="text-xs text-zinc-500 leading-relaxed">Memories AI — v0.9<br>FastAPI · CLIP · BLIP · InsightFace<br>Running on local hardware</p>
-        </div>
-    </div>
-</div>
-
-<!-- ===== LIGHTBOX ===== -->
-<div x-show="lbOpen" x-cloak class="fixed inset-0 z-[70] bg-black flex flex-col" @keydown.escape.window="lbOpen=false;lbDetail=false" @keydown.arrow-left.window="lbPrev()" @keydown.arrow-right.window="lbNext()">
-    <div class="absolute inset-x-0 top-0 z-10 flex items-center justify-between p-4 pt-12" style="background:linear-gradient(to bottom,rgba(0,0,0,0.8),transparent)">
-        <button @click="lbOpen=false" class="p-2 bg-zinc-800/80 rounded-full"><i data-lucide="x" class="w-5 h-5"></i></button>
-        <span class="text-sm text-zinc-400" x-show="lbPhotos.length>1" x-text="(lbIdx+1)+' / '+lbPhotos.length"></span>
-        <div class="relative">
-            <button @click.stop="lbMenuOpen=!lbMenuOpen" class="p-2 bg-zinc-800/80 rounded-full"><i data-lucide="more-vertical" class="w-5 h-5"></i></button>
-            <div x-show="lbMenuOpen" x-transition class="absolute right-0 top-full mt-1 bg-zinc-900 border border-zinc-700 rounded-xl overflow-hidden shadow-2xl min-w-[160px] z-[80]">
-                <button @click.stop="lbEditCaption();lbMenuOpen=false" class="w-full px-4 py-3 text-left text-sm hover:bg-zinc-800 flex items-center gap-2"><i data-lucide="edit-3" class="w-4 h-4 text-zinc-400"></i><span>Edit Caption</span></button>
-                <button @click.stop="lbMovePhoto();lbMenuOpen=false" class="w-full px-4 py-3 text-left text-sm hover:bg-zinc-800 flex items-center gap-2"><i data-lucide="folder" class="w-4 h-4 text-zinc-400"></i><span>Move</span></button>
-                <button @click.stop="lbDeletePhoto();lbMenuOpen=false" class="w-full px-4 py-3 text-left text-sm text-red-400 hover:bg-zinc-800 flex items-center gap-2"><i data-lucide="trash-2" class="w-4 h-4"></i><span>Delete</span></button>
-            </div>
-        </div>
-    </div>
-    <div class="flex-1 flex items-center justify-center relative overflow-hidden select-none" @touchstart="lbST=$event.changedTouches[0].clientX" @touchend="lbSwipe($event)" @click.self="lbDetail=!lbDetail;lbMenuOpen=false">
-        <img :src="lbCurUrl" class="max-w-full max-h-full object-contain">
-        <button x-show="lbIdx>0" @click.stop="lbPrev()" class="absolute left-2 top-1/2 -translate-y-1/2 p-2.5 bg-black/50 rounded-full"><i data-lucide="chevron-left" class="w-6 h-6"></i></button>
-        <button x-show="lbIdx<lbPhotos.length-1" @click.stop="lbNext()" class="absolute right-2 top-1/2 -translate-y-1/2 p-2.5 bg-black/50 rounded-full"><i data-lucide="chevron-right" class="w-6 h-6"></i></button>
-    </div>
-    <div x-show="lbDetail" class="bg-zinc-900/95 border-t border-zinc-800 p-4 pb-24 overflow-y-auto" style="max-height:40vh">
-        <template x-if="lbPhoto">
-            <div>
-                <!-- Inline caption edit -->
-                <div x-show="lbCaptionEdit" class="mb-3">
-                    <textarea x-model="lbCaption" class="w-full bg-black border border-zinc-700 rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500" rows="2" placeholder="Add a caption..."></textarea>
-                    <div class="flex gap-2 mt-2">
-                        <button @click="lbSaveCaption()" class="px-3 py-1 bg-blue-500 rounded-lg text-sm font-medium">Save</button>
-                        <button @click="lbCaptionEdit=false" class="px-3 py-1 bg-zinc-700 rounded-lg text-sm">Cancel</button>
-                    </div>
-                </div>
-                <div class="flex items-start gap-2 mb-3">
-                    <p class="text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap flex-1" x-text="lbPhoto.caption||'No caption'"></p>
-                    <button @click="lbCaptionEdit=true;lbCaption=lbPhoto.caption||''" class="p-1 text-zinc-500 hover:text-zinc-300"><i data-lucide="edit-2" class="w-3.5 h-3.5"></i></button>
-                </div>
-                <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500">
-                    <span x-text="lbPhoto.analyzed_at?fmtDate(lbPhoto.analyzed_at):'Unknown'"></span>
-                    <span class="text-yellow-500" x-show="lbPhoto.quality_score" x-text="'★ '+(lbPhoto.quality_score||0).toFixed(1)"></span>
-                    <span class="bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded-full" x-text="lbPhoto.file_path?.split('/').pop()"></span>
-                </div>
-                <div class="flex gap-2 mt-3 flex-wrap" x-show="lbPhotoPeople.length">
-                    <template x-for="pp in lbPhotoPeople" :key="pp.id">
-                        <span class="text-xs bg-zinc-800 px-2 py-1 rounded-full text-zinc-300 flex items-center gap-1.5"><img :src="pp.avatarUrl" class="w-4 h-4 rounded-full object-cover"><span x-text="pp.display"></span></span>
+            <section x-show="people.length > 0" class="mb-8">
+                <h2 class="text-lg font-bold mb-4 flex items-center gap-2">
+                    <i data-lucide="users" class="w-5 h-5 text-blue-500"></i> Your People
+                </h2>
+                <div class="flex gap-4 overflow-x-auto pb-4 -mx-6 px-6 scrollbar-none">
+                    <template x-for="p in people.slice(0, 10)" :key="p.id">
+                        <button @click="openPerson(p)" class="flex-shrink-0 group w-16">
+                            <div class="w-16 h-16 rounded-2xl overflow-hidden mb-2 bento-card relative">
+                                <!-- Background Fallback (Square Crop) -->
+                                <img :src="getAvatarSrc(p)"
+                                     :style="getPersonStyle(p)"
+                                     class="w-full h-full object-cover opacity-20 blur-[2px]">
+                                <!-- Floating "Lifted" Subject -->
+                                <div class="absolute inset-0 flex items-center justify-center p-1">
+                                    <img :src="getLiftedUrl(p.id)" 
+                                         @error="$el.style.display='none'"
+                                         class="w-full h-full object-contain drop-shadow-[0_5px_5px_rgba(0,0,0,0.5)] scale-110 group-hover:scale-125 transition-transform duration-500">
+                                </div>
+                                <div class="absolute inset-x-0 bottom-0 bg-black/40 h-1/3 flex items-end justify-center pb-0.5">
+                                    <span class="text-[8px] font-bold uppercase" x-text="p.count"></span>
+                                </div>
+                            </div>
+                            <p class="text-[10px] font-bold text-center text-zinc-400 truncate w-16" x-text="p.display || 'User'"></p>
+                        </button>
                     </template>
                 </div>
-                <!-- Move / Delete buttons -->
-                <div class="flex gap-2 mt-4">
-                    <button @click="lbMovePhoto()" class="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-xs"><i data-lucide="folder" class="w-3.5 h-3.5"></i><span>Move</span></button>
-                    <button @click="lbDeletePhoto()" class="flex items-center gap-1.5 px-3 py-1.5 bg-red-900/30 hover:bg-red-900/50 text-red-400 rounded-lg text-xs"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i><span>Delete</span></button>
+            </section>
+
+            <section x-show="allPhotos.length > 0">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-bold flex items-center gap-2">
+                        <i data-lucide="image" class="w-5 h-5 text-purple-500"></i> Recent Memories
+                    </h2>
+                    <button x-show="!selectionMode" @click="selectionMode = true" class="text-xs font-bold text-blue-500 uppercase tracking-widest bg-blue-500/10 px-3 py-1.5 rounded-lg active:scale-95 transition-all">Select</button>
+                    <button x-show="selectionMode" @click="exitSelection()" class="text-xs font-bold text-zinc-500 uppercase tracking-widest bg-white/5 px-3 py-1.5 rounded-lg active:scale-95 transition-all">Cancel</button>
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                    <template x-for="(p, i) in allPhotos.slice(0, 48)" :key="p.file_path">
+                        <div @click="selectionMode ? toggleSelection(p.file_path) : openLightbox(i, allPhotos)" 
+                             class="aspect-square rounded-xl overflow-hidden bento-card active:scale-95 transition-all relative border-2"
+                             :class="selectedItems.includes(p.file_path) ? 'border-blue-500 scale-95' : 'border-transparent'">
+                            <img :src="'/images/' + p.file_path.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover">
+                            <!-- Ghost and Processing Overlay -->
+                            <div x-show="p.processing_status !== 'done' && p.processing_status !== 'error'" 
+                                 class="absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center p-2 text-center">
+                                <i data-lucide="cpu" class="w-6 h-6 text-blue-400 animate-spin mb-2"></i>
+                                <p class="text-[8px] font-black uppercase text-blue-400 tracking-widest" x-text="p.processing_status"></p>
+                            </div>
+                            <div x-show="selectionMode && selectedItems.includes(p.file_path)" class="absolute top-1.5 right-1.5 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center shadow-lg">
+                                <i data-lucide="check" class="w-3.5 h-3.5 text-white"></i>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </section>
+        </div>
+
+        <!-- Tab: Moments -->
+        <div x-show="tab === 'moments'" x-cloak class="p-6 max-w-2xl mx-auto">
+            <div class="flex items-center justify-between mb-8 pt-4">
+                <h1 class="text-4xl font-black tracking-tight">Moments</h1>
+                <div class="flex gap-2">
+                    <button @click="confirmAction('Regenerate moments from scratch?', 'regenerateMoments')" class="bg-white/5 p-3 rounded-2xl border border-white/5 active:scale-90 transition-all">
+                        <i data-lucide="refresh-cw" class="w-5 h-5 text-zinc-400"></i>
+                    </button>
+                    <button @click="addMomentOpen = true" class="bg-blue-500 text-white p-3 rounded-2xl shadow-lg shadow-blue-500/20 active:scale-90 transition-all">
+                        <i data-lucide="plus" class="w-5 h-5"></i>
+                    </button>
                 </div>
             </div>
-        </template>
-    </div>
-    <div x-show="!lbDetail" class="absolute bottom-6 inset-x-0 text-center text-[10px] text-zinc-600">Tap for details · Swipe to navigate</div>
-</div>
 
-<!-- ===== PERSON GALLERY ===== -->
-<div x-show="pgOpen" x-cloak class="fixed inset-0 z-[60] bg-black overflow-y-auto pb-20" @keydown.escape.window="pgOpen=false">
-    <div class="sticky top-0 z-10 px-4 pt-14 pb-3 flex items-center gap-3" style="background:rgba(0,0,0,0.9);backdrop-filter:blur(16px);border-bottom:1px solid rgba(63,63,70,0.25)">
-        <button @click="pgOpen=false" class="p-2 bg-zinc-800 rounded-full"><i data-lucide="arrow-left" class="w-5 h-5"></i></button>
-        <div><h2 class="text-lg font-bold" x-text="pgPerson?.display||''"></h2><p class="text-xs text-zinc-500" x-text="pgPhotos.length+' photos'"></p></div>
-    </div>
-    <div class="px-2 pt-3 grid grid-cols-3 gap-1.5">
-        <template x-for="(ph,i) in pgPhotos" :key="i">
-            <div @click="lbFromPhotos(pgPhotos,i)" class="aspect-square rounded-lg overflow-hidden cursor-pointer" style="transition:transform .12s" @mousedown="$el.style.transform='scale(0.95)'" @mouseup="$el.style.transform=''" @mouseleave="$el.style.transform=''">
-                <img :src="imgThumb(ph)" class="w-full h-full object-cover" loading="lazy">
-            </div>
-        </template>
-        <div x-show="!pgPhotos.length" class="col-span-3 text-center text-zinc-600 py-20 text-sm">No photos found for this person</div>
-    </div>
-</div>
+            <!-- Empty State for Moments -->
+            <template x-if="moments.length === 0">
+                <div class="flex flex-col items-center justify-center py-20 text-center">
+                    <div class="w-20 h-20 bg-zinc-900 rounded-full flex items-center justify-center mb-4 border border-white/5">
+                        <i data-lucide="layers" class="w-10 h-10 text-zinc-700"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-zinc-300">No AI Moments</h3>
+                    <p class="text-zinc-500 max-w-xs mx-auto mt-2">Upload more photos to let the engine group your memories into stories.</p>
+                </div>
+            </template>
 
-<!-- ===== MOMENT GALLERY (with edit mode) ===== -->
-<div x-show="mgOpen" x-cloak class="fixed inset-0 z-[60] bg-black overflow-y-auto pb-20" @keydown.escape.window="mgOpen=false;mgEdit=false">
-    <div class="sticky top-0 z-10 px-4 pt-14 pb-3 flex items-center justify-between" style="background:rgba(0,0,0,0.9);backdrop-filter:blur(16px);border-bottom:1px solid rgba(63,63,70,0.25)">
-        <div class="flex items-center gap-3">
-            <button @click="mgOpen=false;mgEdit=false" class="p-2 bg-zinc-800 rounded-full"><i data-lucide="arrow-left" class="w-5 h-5"></i></button>
-            <div><h2 class="text-lg font-bold capitalize" x-text="mgMoment?.label"></h2><p class="text-xs text-zinc-500" x-text="mgPhotos.length+' photos'"></p></div>
-        </div>
-        <button @click="mgEdit=!mgEdit" class="p-2 bg-zinc-800 rounded-full"><i data-lucide="edit" class="w-4 h-4" :style="mgEdit?'color:#3B82F6':''"></i></button>
-    </div>
-    <div class="px-2 pt-3 grid grid-cols-3 gap-1.5">
-        <template x-for="(ph,i) in mgPhotos" :key="i">
-            <div @click.stop="mgEdit?null:lbFromPhotos(mgPhotos,i)" class="aspect-square rounded-lg overflow-hidden relative cursor-pointer" :style="mgEdit?'opacity:0.6':''" @mousedown="$el.style.transform='scale(0.95)'" @mouseup="$el.style.transform=''" @mouseleave="$el.style.transform=''">
-                <img :src="imgThumb(ph)" class="w-full h-full object-cover transition-opacity" loading="lazy" :style="mgEdit?'filter:brightness(0.4)':''">
-                <template x-if="mgEdit">
-                    <div class="absolute inset-0 flex flex-col items-center justify-center gap-1.5">
-                        <button @click.stop="setMomentCover(i)" class="p-2 bg-blue-500/80 rounded-full"><i data-lucide="image" class="w-4 h-4 text-white"></i></button>
-                        <span class="text-[10px] text-zinc-300">Cover</span>
-                        <button @click.stop="removeMomentPhoto(i)" class="p-2 bg-red-500/80 rounded-full"><i data-lucide="trash-2" class="w-4 h-4 text-white"></i></button>
-                        <span class="text-[10px] text-zinc-300">Remove</span>
+            <div class="grid grid-cols-1 gap-4">
+                <template x-for="m in moments" :key="m.id">
+                    <div class="bento-card rounded-3xl overflow-hidden relative group active:scale-[0.98] transition-all duration-300"
+                         @contextmenu.prevent="openMomentMenu(m, $event)">
+                        <div @click="openMomentGallery(m)" class="cursor-pointer">
+                            <div class="aspect-[16/9] w-full relative bg-zinc-900 border-b border-white/5">
+                                <template x-if="m.cover_image">
+                                    <img :src="'/images/' + m.cover_image.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover">
+                                </template>
+                                <template x-if="!m.cover_image">
+                                    <div class="w-full h-full flex items-center justify-center opacity-20">
+                                         <i data-lucide="layers" class="w-12 h-12"></i>
+                                    </div>
+                                </template>
+                                <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
+                                <div class="absolute bottom-4 left-5 right-5">
+                                    <h3 class="text-2xl font-bold text-white" x-text="m.label"></h3>
+                                    <p class="text-xs text-white/60 font-medium" x-text="m.count + ' photos • ' + (new Date(m.timestamp*1000).toLocaleDateString())"></p>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- UI Polish: Visible Trigger for Mobile -->
+                        <button @click.stop="openMomentMenu(m, $event)" class="absolute top-4 right-4 w-10 h-10 rounded-full bg-black/50 backdrop-blur-md flex items-center justify-center lg:opacity-0 group-hover:opacity-100 transition-opacity border border-white/10">
+                            <i data-lucide="more-vertical" class="w-5 h-5 text-white"></i>
+                        </button>
                     </div>
                 </template>
             </div>
-        </template>
-        <div x-show="mgEdit" class="col-span-3">
-            <button @click="mgEdit=false" class="mx-auto block bg-blue-500 text-white text-sm font-semibold px-4 py-2 rounded-lg mt-2">Done Editing</button>
         </div>
-    </div>
-</div>
 
-<!-- ===== TIMELINE ===== -->
-<div x-show="tlOpen" x-cloak class="fixed inset-0 z-[60] bg-black" style="transition:transform .3s" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="translate-y-full" x-transition:enter-end="translate-y-0" x-transition:leave="transition ease-in" x-transition:leave-start="translate-y-0" x-transition:leave-end="translate-y-full">
-    <div class="flex items-center gap-3 p-4 pt-14" style="background:linear-gradient(to bottom,rgba(0,0,0,0.9),transparent);position:sticky;top:0;z-index:5">
-        <button @click="tlOpen=false" class="p-2 bg-zinc-800 rounded-full"><i data-lucide="x" class="w-5 h-5"></i></button>
-        <h2 class="text-lg font-bold" x-text="'Timeline · '+(tlPerson?.display||'')"></h2>
-    </div>
-    <div class="flex overflow-x-auto hide-scroll gap-3 px-3 pb-6 snap-x snap-mandatory" style="height:calc(100vh - 80px);align-items:center">
-        <template x-for="ph in tlPhotos" :key="ph.file_path">
-            <div @click="lbFromPhotos(tlPhotos,tlPhotos.indexOf(ph))" class="snap-center flex-shrink-0 w-72 bg-zinc-900 rounded-2xl overflow-hidden border border-zinc-800/50 relative cursor-pointer">
-                <img :src="imgThumb(ph)" class="w-full h-72 object-cover" loading="lazy">
-                <div class="absolute bottom-0 inset-x-0 p-5" style="background:linear-gradient(to top,rgba(0,0,0,0.9),transparent)">
-                    <p class="text-[10px] text-blue-400 font-bold mb-0.5 uppercase" x-text="ph.analyzed_at?fmtDate(ph.analyzed_at):''"></p>
-                    <p class="text-xs text-zinc-300 line-clamp-3" x-text="ph.caption||'No caption'"></p>
+        <!-- Tab: People -->
+        <div x-show="tab === 'people'" x-cloak class="p-6 max-w-2xl mx-auto">
+            <div class="mb-8 pt-4">
+                <h1 class="text-4xl font-black tracking-tight mb-4">People</h1>
+                <div class="relative">
+                    <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500"></i>
+                    <input x-model="searchQuery" type="text" placeholder="Search people..." class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 outline-none focus:ring-2 focus:ring-blue-500">
                 </div>
             </div>
-        </template>
-        <div x-show="!tlPhotos.length" class="text-center text-zinc-600 text-sm py-20 flex-shrink-0 w-72">No timeline photos</div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <template x-for="p in filteredPeople" :key="peopleVersion + '-' + p.id">
+                    <div @click="selectionMode ? toggleSelection(p.avatar) : openPerson(p)" 
+                         @contextmenu.prevent="openPersonMenu(p, $event)"
+                         class="bento-card p-3 rounded-[24px] flex flex-col items-center text-center relative group cursor-pointer border-2 transition-all duration-300"
+                         :class="selectedItems.includes(p.avatar) ? 'border-blue-500 scale-95' : 'border-transparent'">
+                        <div class="w-full aspect-square rounded-[20px] overflow-hidden mb-3 relative bg-zinc-800">
+                            <!-- Background Fallback -->
+                            <img :src="getAvatarSrc(p)"
+                                 :style="getPersonStyle(p)"
+                                 class="w-full h-full object-cover opacity-20 blur-[2px]">
+                            <!-- Floating Premium Portrait -->
+                            <div class="absolute inset-0 flex items-center justify-center p-2">
+                                <img :src="getLiftedUrl(p.id)" 
+                                     @error="$el.style.display='none'"
+                                     class="w-full h-full object-contain drop-shadow-[0_8px_8px_rgba(0,0,0,0.4)] transition-transform duration-500 group-hover:scale-110">
+                            </div>
+                        </div>
+                        <h4 class="text-sm font-bold text-white mb-0.5 truncate w-full" x-text="p.display || 'Person'"></h4>
+                        <p class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest" x-text="p.count + ' Photos'"></p>
+                        
+                        <!-- UI Polish: Visible Trigger for Mobile -->
+                        <button x-show="!selectionMode" @click.stop="openPersonMenu(p, $event)" class="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center lg:opacity-0 group-hover:opacity-100 transition-opacity border border-white/10">
+                            <i data-lucide="more-vertical" class="w-4 h-4 text-white"></i>
+                        </button>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Bulk Actions Toolbar -->
+    <div x-show="selectionMode" x-cloak
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="translate-y-20 opacity-0"
+         x-transition:enter-end="translate-y-0 opacity-100"
+         class="fixed bottom-28 left-6 right-6 z-[120]">
+        <div class="bg-blue-600 p-4 rounded-3xl shadow-2xl flex items-center justify-between gap-4">
+            <p class="text-sm font-black text-white pl-2" x-text="selectedItems.length + ' Selected'"></p>
+            <div class="flex gap-2">
+                <button @click="lbMoveShow = true" class="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center active:scale-90 transition-all">
+                    <i data-lucide="folder-plus" class="w-5 h-5 text-white"></i>
+                </button>
+                <button @click="confirmAction('Delete ' + selectedItems.length + ' photos permanently?', 'bulkDelete')" class="w-12 h-12 bg-red-500 rounded-2xl flex items-center justify-center active:scale-90 transition-all">
+                    <i data-lucide="trash-2" class="w-5 h-5 text-white"></i>
+                </button>
+            </div>
+        </div>
     </div>
-</div>
 
-<!-- ===== UPLOAD FAB ===== -->
-<label class="fixed bottom-24 right-4 z-50 bg-blue-500 w-12 h-12 rounded-full flex items-center justify-center shadow-xl shadow-blue-500/20 hover:scale-110 transition-transform cursor-pointer active:scale-90">
-    <i data-lucide="plus" class="w-6 h-6 text-white"></i>
-    <input type="file" class="hidden" accept="image/*" multiple @change="handleUpload($event)">
-</label>
+    <!-- Global Floating Tab Bar -->
+    <nav class="fixed bottom-6 left-6 right-6 z-[55] bento-card px-2 py-3 rounded-[24px] border border-white/10 shadow-3xl">
+        <div class="flex items-center justify-between gap-1">
+            <template x-for="t in ['discover', 'moments', 'people']" :key="t">
+                <button @click="tab = t" class="flex-1 flex flex-col items-center gap-1 py-1.5 transition-all rounded-xl"
+                        :class="tab === t ? 'text-blue-500 bg-blue-500/10' : 'text-zinc-500 hover:text-white'">
+                    <i :data-lucide="t === 'discover' ? 'layout-grid' : (t === 'moments' ? 'layers' : 'users')" class="w-5 h-5"></i>
+                    <span class="text-[9px] font-bold uppercase tracking-wider" x-text="t"></span>
+                </button>
+            </template>
+            <div class="w-px h-8 bg-white/10 mx-1"></div>
+            <label class="flex-1 flex flex-col items-center gap-1 py-1.5 cursor-pointer text-zinc-500 hover:text-white">
+                <input type="file" multiple accept="image/*" class="hidden" @change="doUpload($event.target.files)">
+                <i data-lucide="plus-square" class="w-6 h-6 text-blue-500"></i>
+                <span class="text-[9px] font-bold uppercase tracking-wider">Add</span>
+            </label>
+        </div>
+    </nav>
 
-<!-- Upload Progress -->
-<div x-show="upProg>0&&upProg<100" class="fixed bottom-28 left-4 right-4 z-50 bg-zinc-800/90 border border-zinc-700/50 rounded-xl px-4 py-3 backdrop-blur-xl">
-    <div class="flex items-center justify-between mb-1.5"><span class="text-xs font-medium">Uploading...</span><span class="text-xs text-zinc-400" x-text="Math.round(upProg)+'%'"></span></div>
-    <div class="w-full bg-zinc-700/50 rounded-full h-1"><div class="bg-blue-500 h-1 rounded-full transition-all duration-300" :style="'width:'+upProg+'%'"></div></div>
-</div>
+    <!-- Lightbox -->
+    <div x-show="lbOpen" x-cloak class="fixed inset-0 z-[70] bg-black flex flex-col animate-in fade-in duration-300" style="display:none">
+            <div class="absolute top-0 inset-x-0 p-6 flex justify-between items-center z-10 bg-gradient-to-b from-black/80 to-transparent">
+                <button @click="lbOpen = false" class="w-12 h-12 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center">
+                    <i data-lucide="chevron-left" class="w-6 h-6 text-white"></i>
+                </button>
+                <div class="flex gap-2">
+                    <button @click="lbMoveShow = true" class="w-12 h-12 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center">
+                        <i data-lucide="folder-plus" class="w-5 h-5 text-white"></i>
+                    </button>
+                    <button @click="lbDeleteShow = true" class="w-12 h-12 bg-red-500/20 backdrop-blur-md rounded-2xl flex items-center justify-center border border-red-500/20">
+                        <i data-lucide="trash-2" class="w-5 h-5 text-red-500"></i>
+                    </button>
+                </div>
+            </div>
 
-<!-- Bottom Nav -->
-<nav class="fixed bottom-0 inset-x-0 z-[55] backdrop-blur-xl" style="background:rgba(0,0,0,0.9);border-top:1px solid rgba(63,63,70,0.25)">
-    <div class="flex justify-around" style="padding:6px 8px max(8px,env(safe-area-inset-bottom))">
-        <button @click="tab='home'" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;background:none;border:none;cursor:pointer" :style="tab==='home'?'color:#3B82F6':'color:rgb(113,113,128)'"><i data-lucide="compass" class="w-6 h-6"></i><span class="text-[10px] font-medium">Discover</span></button>
-        <button @click="tab='moments'" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;background:none;border:none;cursor:pointer" :style="tab==='moments'?'color:#3B82F6':'color:rgb(113,113,128)'"><i data-lucide="layers" class="w-6 h-6"></i><span class="text-[10px] font-medium">Moments</span></button>
-        <button @click="tab='people'" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;background:none;border:none;cursor:pointer" :style="tab==='people'?'color:#3B82F6':'color:rgb(113,113,128)'"><i data-lucide="users" class="w-6 h-6"></i><span class="text-[10px] font-medium">People</span></button>
-        <button @click="tab='settings'" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;background:none;border:none;cursor:pointer" :style="tab==='settings'?'color:#3B82F6':'color:rgb(113,113,128)'"><i data-lucide="settings" class="w-6 h-6"></i><span class="text-[10px] font-medium">Settings</span></button>
+            <div class="flex-1 flex flex-col items-center justify-center px-4 relative pt-20">
+                <div class="flex-1 flex items-center justify-center w-full relative group">
+                    <!-- Navigation Arrows (Desktop) -->
+                    <button @click="lbPrev()" class="absolute left-0 top-1/2 -translate-y-1/2 w-14 h-14 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20 pointer-events-auto">
+                        <i data-lucide="chevron-left" class="w-8 h-8"></i>
+                    </button>
+                    <button @click="lbNext()" class="absolute right-0 top-1/2 -translate-y-1/2 w-14 h-14 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20 pointer-events-auto">
+                        <i data-lucide="chevron-right" class="w-8 h-8"></i>
+                    </button>
+
+                    <img :src="lbPhotos[lbIndex] ? '/images/' + lbPhotos[lbIndex].file_path.replace('/root/memories-sorted/data/input/', '') : ''" 
+                         class="max-w-full max-h-[60vh] object-contain rounded-2xl shadow-2xl transition-all duration-300 pointer-events-none"
+                         :class="lbSwipeOffset !== 0 ? 'scale-95 opacity-50' : ''"
+                         @touchstart="lbTStart = $event.touches[0].clientX; lbTStartTime = Date.now()"
+                         @touchend="lbTEnd($event.changedTouches[0].clientX)">
+                </div>
+
+                <div class="w-full max-w-2xl mt-8 mb-4 overflow-x-auto scrollbar-none flex gap-3 px-4 py-3 bg-zinc-900/50 backdrop-blur-2xl rounded-3xl border border-white/5 shadow-2xl">
+                    <template x-for="(p, i) in lbPhotos" :key="'strip-' + p.file_path">
+                        <button @click="lbIndex = i" 
+                                class="flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 transition-all duration-300 ring-blue-500/30"
+                                :class="lbIndex === i ? 'border-blue-500 scale-110 ring-4 z-10 shadow-blue-500/20' : 'border-transparent opacity-40 grayscale-[0.5] scale-95 hover:opacity-100 hover:scale-100 hover:grayscale-0'">
+                            <img :src="'/images/' + p.file_path.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover">
+                        </button>
+                    </template>
+                </div>
+            </div>
+
+            <div class="p-8 pb-32 bg-gradient-to-t from-black via-black/80 to-transparent">
+                <div class="max-w-lg mx-auto">
+                    <div x-show="!lbCaptionEdit" @click="lbCaptionEdit = true; lbCaption = lbPhotos[lbIndex]?.caption || ''" class="mb-4 cursor-text">
+                        <p class="text-lg font-medium text-white/90 leading-relaxed italic" 
+                           x-text="lbPhotos[lbIndex]?.caption || 'Add a caption...'"></p>
+                    </div>
+                    <div x-show="lbCaptionEdit" class="mb-4">
+                        <textarea x-model="lbCaption" class="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white outline-none focus:ring-2 focus:ring-blue-500 mb-2"></textarea>
+                        <div class="flex gap-2">
+                            <button @click="lbCaptionEdit = false" class="flex-1 py-3 rounded-xl bg-white/5 text-sm font-bold">Cancel</button>
+                            <button @click="lbSaveCaption()" class="flex-1 py-3 rounded-xl bg-blue-500 text-sm font-bold">Save</button>
+                        </div>
+                    </div>
+                    <!-- People in this Photo -->
+                    <template x-if="getLbPeople().length > 0">
+                        <div class="mb-8">
+                            <p class="text-[10px] text-zinc-500 uppercase tracking-widest font-black mb-4">People in this photo</p>
+                            <div class="flex flex-wrap gap-3">
+                                <template x-for="pInfo in getLbPeople()" :key="pInfo.id">
+                                    <button @click="lbOpen = false; openPerson(pInfo)" class="flex items-center gap-2 bg-white/5 pr-3 pl-1 py-1 rounded-full border border-white/5 hover:bg-white/10 active:scale-95 transition-all">
+                                        <div class="w-8 h-8 rounded-full overflow-hidden bento-card bg-zinc-800 relative">
+                                            <img :src="getLiftedUrl(pInfo.id)" class="w-full h-full object-cover">
+                                        </div>
+                                        <span class="text-xs font-bold text-zinc-300" x-text="pInfo.display || 'User'"></span>
+                                    </button>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+
+                    <div class="flex flex-wrap gap-2 opacity-60">
+                        <template x-for="tag in (lbPhotos[lbIndex]?.ai_desc || '').split(',').slice(0, 5)">
+                            <span class="text-xs font-bold uppercase tracking-wider px-2 py-1 bg-white/10 rounded-lg" x-text="tag.trim()"></span>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
-</nav>
 
-</div><!-- .x-data -->
+    <!-- Modal: Delete Confirmation -->
+    <div x-show="lbDeleteShow" x-cloak class="fixed inset-0 z-[75] flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl" style="display:none">
+        <div class="bg-zinc-900 border border-white/10 rounded-3xl w-full max-w-sm p-6 shadow-2xl text-center">
+            <div class="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i data-lucide="trash-2" class="w-8 h-8 text-red-500"></i>
+            </div>
+            <h3 class="text-xl font-bold text-white mb-2">Delete Photo?</h3>
+            <p class="text-sm text-zinc-400 mb-6">This cannot be undone.</p>
+            <div class="flex gap-3">
+                <button @click="lbDeleteShow = false" class="flex-1 py-3 rounded-2xl bg-white/5 text-white font-bold">Cancel</button>
+                <button @click="doDeletePhoto()" class="flex-1 py-3 rounded-2xl bg-red-500 text-white font-bold">Delete</button>
+            </div>
+        </div>
+    </div>
 
-<script>
-function app(){return{
-    tab:'home',loading:false,
-    expIns:null,
-    searchQ:'',searchRes:null,
-    moments:[],people:[],allPhotos:[],topPhotos:[],insights:[],
-    pgOpen:false,pgPerson:null,pgPhotos:[],
-    mgOpen:false,mgMoment:null,mgPhotos:[],mgEdit:false,
-    tlOpen:false,tlPerson:null,tlPhotos:[],
-    lbOpen:false,lbIdx:0,lbPhotos:[],lbDetail:true,lbST:0,lbMenuOpen:false,lbCaptionEdit:false,lbCaption:'',lbMoveShow:false,lbDeleteShow:false,
-    // Zoom state (pinch, double-tap, scroll wheel)
-    lbZ:{s:1,x:0,y:0,min:1,max:5,panning:false,startX:0,startY:0,pinchDist:0,pinchScale:1,lastTap:0},
-    rnOpen:false,rnId:null,rnInput:'',
-    addMomentOpen:false,newMomentLabel:'',
-    upProg:0,
-    toast:{show:false,text:'',type:'success'},
-    confirm:{show:false,title:'',message:'',onConfirm:()=>{},okText:'Confirm'},
+    <!-- Modal: Confirm Dialog -->
+    <div x-show="confirmShow" x-cloak class="fixed inset-0 z-[75] flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl" style="display:none">
+        <div class="bg-zinc-900 border border-white/10 rounded-3xl w-full max-w-sm p-6 shadow-2xl text-center">
+            <h3 class="text-xl font-bold text-white mb-2" x-text="confirmMessage"></h3>
+            <div class="flex gap-3 mt-6">
+                <button @click="confirmShow = false" class="flex-1 py-3 rounded-2xl bg-white/5 text-white font-bold">Cancel</button>
+                <button @click="doConfirm()" class="flex-1 py-3 rounded-2xl bg-blue-500 text-white font-bold">Confirm</button>
+            </div>
+        </div>
+    </div>
 
-    async init(){try{const r=await Promise.all([fetch('/api/index'),fetch('/api/moments'),fetch('/api/insights')]);const d=await Promise.all(r.map(x=>x.json()));this.build(d[0],d[1],d[2])}catch(e){this.flash('Load failed','error')}},
-    async refreshAll(){this.loading=true;try{const r=await Promise.all([fetch('/api/index'),fetch('/api/moments'),fetch('/api/insights')]);const d=await Promise.all(r.map(x=>x.json()));this.build(d[0],d[1],d[2]);this.flash('Updated')}finally{this.loading=false}},
-    build(idx,mom,ins){
-        this.people=Object.values(idx?.person_registry||{}).map(p=>({...p,display:p.name||p.id.replace('PERSON_','Person ')})).sort((a,b)=>b.face_count-a.face_count);
-        this.allPhotos=(idx.image_catalog||[]).map(p=>{p.person_ids=[...(new Set((p.assignments||[]).filter(a=>a.person_id).map(a=>a.person_id)))];return p});
-        this.moments=mom||[];this.insights=ins||[];
-        this.topPhotos=[...this.allPhotos.filter(p=>p.quality_score>6)].sort((a,b)=>(b.quality_score||0)-(a.quality_score||0)).slice(0,10);
-        this.$nextTick(()=>{lucide.createIcons();this.$refs?.init?.()});
-        // Preload avatars
-        this.people.forEach(async p=>{if(p.best_face_hash){try{const r=await fetch('/api/face-thumb/'+p.best_face_hash);if(r.ok)p.avatarUrl=URL.createObjectURL(await r.blob())}catch(e){}}});
-    },
-    // Nav & UI
-    flash(t,type='success'){this.toast={show:true,text:t,type};setTimeout(()=>this.toast.show=false,3000)},
-    confirmAction(msg,action){
-        const confirm=this.confirm;
-        confirm.message=msg;confirm.okText=action.startsWith('delete')?'Delete':'OK';
-        confirm.onConfirm=async()=>{
-            if(action==='regenerateMoments')await this.post('/api/moments/regenerate','Moments regenerated'),await this.refreshAll();
-            else if(action==='clearFaces')await navigator.clipboard?.writeText('Cache cleared'),await fetch('/api/moments/regenerate',{method:'POST'}),this.flash('Face cache clear requested');
-            else if(action.startsWith('deleteMoment::')){const id=action.split('::')[1];await this.post('/api/moments/delete',{moment_id:id},'Moment deleted');await this.refreshAll();}
-            else if(action.startsWith('deletePerson::')){const id=action.split('::')[1];await this.post('/api/people/delete',{person_id:id},'Person deleted');await this.refreshAll();}
-            else if(action.startsWith('mergeInit::')){const src=action.split('::')[1];this.mergeSource=src;this.mergePending=true;this.flash('Now tap another person to merge into','success');}
-        };
-        confirm.show=true;
-    },
-    mergeSource:null,mergePending:false,
-    momentEdit:{show:false,action:'Rename',input:'',target:null},
-    editMomentLabel(m){this.momentEdit={show:true,action:'Rename',input:m.label||'',target:m};},
-    async doMomentEdit(){
-        const m=this.momentEdit.target;if(!m)return;this.momentEdit.show=false;
-        await this.post('/api/moments/rename',{moment_id:m.id,new_label:this.momentEdit.input},'Label updated');
-        await this.refreshAll();
-    },
-    showMomentMenu(m){this.moments.forEach(x=>x.__menu=false);m.__menu=true;},
-    lightboxOpen(id){this.lbOpen=true;this.lbIdx=id;this.lbPhotos=this.allPhotos;this.lbDetail=true;this.$nextTick(()=>lucide.createIcons());},
-    lightboxOpenFromList(idx){this.lbOpen=true;this.lbIdx=idx;this.lbPhotos=this.allPhotos;this.lbDetail=true;this.$nextTick(()=>lucide.createIcons());},
-    lbFromPhotos(arr,i){this.lbPhotos=arr;this.lbIdx=i;this.lbOpen=true;this.lbDetail=true;this.pgOpen=false;this.mgOpen=false;this.$nextTick(()=>lucide.createIcons());},
-    get lbPhoto(){return this.lbPhotos[this.lbIdx]||null},
-    get lbCurUrl(){const p=this.lbPhotos[this.lbIdx]||{};return '/images/'+(p.file_path||'').split('/').pop()},
-    get lbPhotoPeople(){return this.lbPhoto?this.people.filter(pp=>(this.lbPhoto.person_ids||[]).includes(pp.id)):[]},
-    lbPrev(){if(this.lbIdx>0){this.lbIdx--}},
-    lbNext(){if(this.lbIdx<this.lbPhotos.length-1){this.lbIdx++}},
-    lbSwipe(e){const d=this.lbST-(e.changedTouches?.[0].clientX||0);Math.abs(d)>50?(d>0?this.lbNext():this.lbPrev()):null},
-    imgThumb(i){return'/images/'+((i?.file_path||i?.cover_image||'').split('/').pop())},
-    fmtDate(d){try{return new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}catch(e){return''+d}},
-    getMomentDateRange(m){
-        if(!m?.member_paths)return'Captured recently';
-        try{const ds=m.member_paths.map(fp=>{const ph=this.allPhotos.find(x=>x.file_path===fp);return ph?.analyzed_at?new Date(ph.analyzed_at).getTime():0}).filter(d=>d>0);if(!ds.length)return'Captured recently';const a=new Date(Math.min(...ds)),b=new Date(Math.max(...ds));const f=a.toLocaleDateString('en-US',{month:'short',day:'numeric'}),l=b.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});return a.toDateString()===b.toDateString()?f:f+' — '+l}catch(e){return'Captured recently'}
-    },
-    lbSaveCaption(){
-        const p=this.lbPhoto;if(!p)return;
-        fetch('/api/photos/caption',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file_path:p.file_path,caption:this.lbCaption})});
-        p.caption=this.lbCaption;this.lbCaptionEdit=false;this.flash('Caption saved');
-    },
-    lbEditCaption(){this.lbCaptionEdit=true;this.lbCaption=(this.lbPhoto?.caption||'');},
-    lbMovePhoto(){
-        if(!this.lbPhoto)return;this.lbMoveShow=true;
-    },
-    async doMovePhoto(targetFolder){
-        const p=this.lbPhoto;if(!p)return;
-        try{
-            const r=await fetch('/api/photos/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file_path:p.file_path,target_folder:targetFolder})});
-            if(r.ok||true){
-                // Remove from all photo lists and refresh
-                this.lbPhotos.splice(this.lbIdx,1);
-                if(this.lbIdx>=this.lbPhotos.length)this.lbIdx=Math.max(0,this.lbPhotos.length-1);
-                this.lbMoveShow=false;
-                this.allPhotos=this.allPhotos.filter(x=>x.file_path!==p.file_path);
-                this.pgPhotos=this.pgPhotos.filter(x=>x.file_path!==p.file_path);
-                this.mgPhotos=this.mgPhotos.filter(x=>x.file_path!==p.file_path);
-                this.tlPhotos=this.tlPhotos.filter(x=>x.file_path!==p.file_path);
-                if(this.lbPhotos.length===0){this.lbOpen=false;}
-                this.flash('Photo moved');
+    <!-- Modal: Rename Person -->
+    <div x-show="rnOpen" x-cloak class="fixed inset-0 z-[75] flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl" style="display:none">
+        <div class="bg-zinc-900 border border-white/10 rounded-3xl w-full max-w-sm p-6 shadow-2xl">
+            <h3 class="text-xl font-bold text-white mb-6">Rename Person</h3>
+            <input x-model="rnInput" type="text" @keyup.enter="doRename()"
+                class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-5 mb-6 text-white outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Enter new name" x-ref="rnField">
+            <div class="flex gap-3">
+                <button @click="rnOpen = false" class="flex-1 py-3 rounded-2xl bg-white/5 text-white font-bold">Cancel</button>
+                <button @click="doRename()" class="flex-1 py-3 rounded-2xl bg-blue-500 text-white font-bold">Rename</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Moment Context Menu -->
+    <div x-show="momentMenuOpen" x-cloak class="fixed inset-0 z-[73]" style="display:none" @click="closeMomentMenu()">
+        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-zinc-900 border border-white/10 rounded-2xl p-2 w-64 shadow-2xl">
+            <button @click="openRenameMoment(momentMenuTarget); closeMomentMenu()" class="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 rounded-xl flex items-center gap-3">
+                <i data-lucide="edit-2" class="w-4 h-4"></i> Rename
+            </button>
+            <hr class="border-white/10 my-1">
+            <button @click="confirmAction('Delete &quot;'+momentMenuTarget.label+'&quot;? This cannot be undone.','deleteMoment::'+momentMenuTarget.id); closeMomentMenu()" class="w-full px-4 py-3 text-left text-sm text-red-400 hover:bg-red-500/10 rounded-xl flex items-center gap-3">
+                <i data-lucide="trash-2" class="w-4 h-4"></i> Delete
+            </button>
+        </div>
+    </div>
+
+    <!-- Modal: Rename Moment -->
+    <div x-show="mgRenameOpen" x-cloak class="fixed inset-0 z-[75] flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl" style="display:none">
+        <div class="bg-zinc-900 border border-white/10 rounded-3xl w-full max-w-sm p-6 shadow-2xl">
+            <h3 class="text-xl font-bold text-white mb-6">Rename Moment</h3>
+            <input x-model="mgRenameInput" type="text" @keyup.enter="doRenameMoment()"
+                class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-5 mb-6 text-white outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Enter new name">
+            <div class="flex gap-3">
+                <button @click="mgRenameOpen = false" class="flex-1 py-3 rounded-2xl bg-white/5 text-white font-bold">Cancel</button>
+                <button @click="doRenameMoment()" class="flex-1 py-3 rounded-2xl bg-blue-500 text-white font-bold">Rename</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Organize / Add to Moment -->
+    <div x-show="lbMoveShow" x-cloak class="fixed inset-0 z-[73] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-xl" style="display:none">
+        <div @click="$el.closest('.fixed').removeAttribute('style'); lbMoveShow = false" class="bg-zinc-900 border-t sm:border border-white/10 rounded-t-[32px] sm:rounded-3xl w-full max-w-lg p-6 shadow-2xl">
+                <div class="w-12 h-1.5 bg-white/10 rounded-full mx-auto mb-6 sm:hidden"></div>
+                <h3 class="text-xl font-bold text-white mb-6">Organize Photo</h3>
+                
+                <div class="mb-8">
+                    <p class="text-xs text-zinc-500 uppercase tracking-widest font-bold mb-4">Add to Moment</p>
+                    <div class="flex gap-3 overflow-x-auto pb-4 -mx-2 px-2 scrollbar-none">
+                        <template x-for="m in moments" :key="m.id">
+                            <button @click="doAddToMoment(m.id)" 
+                                    class="flex-shrink-0 w-24 bg-white/5 border border-white/10 rounded-2xl p-2 text-center hover:bg-white/10 active:scale-95 transition-all">
+                                <div class="w-full aspect-square rounded-xl overflow-hidden mb-2 bg-zinc-800 flex items-center justify-center">
+                                    <template x-if="m.cover_image">
+                                        <img :src="'/images/' + m.cover_image.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover">
+                                    </template>
+                                    <template x-if="!m.cover_image">
+                                        <div class="w-full h-full flex items-center justify-center">
+                                            <i data-lucide="image" class="w-6 h-6 text-zinc-600"></i>
+                                        </div>
+                                    </template>
+                                </div>
+                                <p class="text-xs font-bold text-white truncate" x-text="m.label"></p>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+
+                <div class="mb-8">
+                    <p class="text-xs text-zinc-500 uppercase tracking-widest font-bold mb-4">Move to Folder</p>
+                    <div class="flex gap-2">
+                        <input x-model="customFolderName" type="text" placeholder="Folder name..." 
+                               class="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                        <button @click="doMovePhoto('/root/memories-sorted/data/' + customFolderName)" 
+                                :disabled="!customFolderName.trim()"
+                                class="bg-blue-500 text-white px-6 rounded-xl font-bold text-sm disabled:opacity-50 active:scale-95 transition-all">Move</button>
+                    </div>
+                </div>
+
+                <button @click="lbMoveShow = false" class="w-full py-4 rounded-2xl text-zinc-400 font-bold hover:bg-white/5 transition-colors">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: New Moment with Photo Select -->
+    <div x-show="addMomentOpen" x-cloak class="fixed inset-0 z-[73] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-md" style="display:none">
+        <div class="bg-zinc-900 border-t sm:border border-white/10 rounded-t-[32px] sm:rounded-3xl w-full max-w-lg p-6 shadow-2xl">
+                <h3 class="text-2xl font-bold text-white mb-1">New Moment</h3>
+                <p class="text-sm text-zinc-500 mb-6">Group your favorite memories.</p>
+                
+                <input x-model="newMomentLabel" type="text" 
+                    class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-5 mb-6 text-white outline-none focus:ring-2 focus:ring-blue-500" 
+                    placeholder="Moment Name (e.g. Summer 2026)">
+
+                <div class="mb-6">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-xs font-bold text-zinc-400 uppercase tracking-widest">Select Photos</span>
+                        <span class="text-xs font-bold text-blue-400" x-text="selectedPhotos.length + ' selected'"></span>
+                    </div>
+                    <div class="flex gap-2 overflow-x-auto pb-2 -mx-2 px-2 scrollbar-none">
+                        <template x-for="p in allPhotos.slice(0, 20)" :key="p.file_path">
+                            <div @click="selectedPhotos.includes(p.file_path) ? selectedPhotos = selectedPhotos.filter(x => x !== p.file_path) : selectedPhotos.push(p.file_path)"
+                                 class="relative flex-shrink-0 w-24 h-24 rounded-xl overflow-hidden cursor-pointer active:scale-95 transition-all">
+                                <img :src="'/images/' + p.file_path.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover">
+                                <div class="absolute inset-0 bg-blue-500/40 flex items-center justify-center opacity-0 transition-opacity"
+                                     :class="selectedPhotos.includes(p.file_path) ? 'opacity-100' : 'opacity-0'">
+                                    <i data-lucide="check" class="w-8 h-8 text-white"></i>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <div class="flex gap-3">
+                    <button @click="addMomentOpen = false" class="flex-1 py-4 text-zinc-500 font-bold">Cancel</button>
+                    <button @click="doAddMoment()" class="flex-1 bg-blue-500 py-4 rounded-2xl font-bold">Create</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Person Gallery -->
+    <template x-if="pgOpen">
+        <div class="fixed inset-0 z-[65] bg-black flex flex-col" @click.self="pgOpen = false">
+            <div class="flex items-center justify-between p-4 bg-zinc-900/80 backdrop-blur-md z-10">
+                <div>
+                    <h2 class="text-xl font-bold text-white" x-text="pgPerson?.display || 'Person'"></h2>
+                    <p class="text-xs text-zinc-500" x-text="pgPhotos.length + ' photos'"></p>
+                </div>
+                <button @click="pgOpen = false" class="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
+                    <i data-lucide="x" class="w-5 h-5 text-white"></i>
+                </button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-4">
+                <template x-if="pgPhotos.length === 0">
+                    <div class="flex flex-col items-center justify-center py-20 text-center opacity-50">
+                        <div class="w-20 h-20 bg-zinc-900 rounded-full flex items-center justify-center mb-4 border border-white/5">
+                            <i data-lucide="image-off" class="w-10 h-10 text-zinc-700"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-zinc-300">No Photos of this Person</h3>
+                        <p class="text-zinc-500 max-w-xs mx-auto mt-2">Wait for AI processing or check assignments.</p>
+                    </div>
+                </template>
+                <div class="grid grid-cols-3 gap-2">
+                    <template x-for="(photo, idx) in pgPhotos" :key="'pg-' + photo.file_path">
+                        <div @click="lbFromPhotos([...pgPhotos], idx); pgOpen = false; lbOpen = true" class="aspect-square rounded-xl overflow-hidden cursor-pointer">
+                            <img :src="'/images/' + photo.file_path.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover active:scale-95 transition-transform">
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <!-- Modal: Moment Gallery -->
+    <template x-if="mgOpen">
+        <div class="fixed inset-0 z-[65] bg-black flex flex-col" @click.self="mgOpen = false">
+            <div class="flex items-center justify-between p-4 bg-zinc-900/80 backdrop-blur-md z-10">
+                <div>
+                    <h2 class="text-xl font-bold text-white" x-text="mgMoment?.label || 'Moment'"></h2>
+                    <p class="text-xs text-zinc-500" x-text="mgPhotos.length + ' photos'"></p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <label class="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center cursor-pointer active:scale-95 transition-all outline-none">
+                        <input type="file" multiple accept="image/*" class="hidden" @change="doUpload($event.target.files)">
+                        <i data-lucide="plus" class="w-5 h-5 text-blue-400"></i>
+                    </label>
+                    <button @click="mgOpen = false" class="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
+                        <i data-lucide="x" class="w-5 h-5 text-white"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="flex-1 overflow-y-auto p-4 pb-20">
+                <template x-if="mgPhotos.length === 0">
+                    <div class="flex flex-col items-center justify-center py-20 text-center opacity-50">
+                        <div class="w-20 h-20 bg-zinc-900 rounded-full flex items-center justify-center mb-4 border border-white/5">
+                            <i data-lucide="layers" class="w-10 h-10 text-zinc-700"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-zinc-300">Empty Moment</h3>
+                        <p class="text-zinc-500 max-w-xs mx-auto mt-2 mb-6">Add photos to this moment or wait for AI sync.</p>
+                        <label class="px-6 py-3 bg-blue-500 text-white font-bold rounded-xl cursor-pointer active:scale-95 transition-all">
+                            <input type="file" multiple accept="image/*" class="hidden" @change="doUpload($event.target.files)">
+                            Upload Directly
+                        </label>
+                    </div>
+                </template>
+                <div class="grid grid-cols-3 gap-2">
+                    <template x-for="(photo, idx) in mgPhotos" :key="'mg-' + photo.file_path">
+                        <div @click="lbFromPhotos([...mgPhotos], idx); mgOpen = false; lbOpen = true" class="aspect-square rounded-xl overflow-hidden cursor-pointer">
+                            <img :src="'/images/' + photo.file_path.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover active:scale-95 transition-transform">
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <!-- Modal: Person Context Menu -->
+    <div x-show="personMenuOpen" x-cloak class="fixed inset-0 z-[73]" style="display:none" @click="closePersonMenu()">
+        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-zinc-900 border border-white/10 rounded-2xl p-2 w-64 shadow-2xl">
+            <button @click="openPerson(personMenuTarget); closePersonMenu()" class="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 rounded-xl flex items-center gap-3">
+                <i data-lucide="images" class="w-4 h-4"></i> View Photos
+            </button>
+            <button @click="openRename(personMenuTarget); closePersonMenu()" class="w-full px-4 py-3 text-left text-sm text-zinc-400 hover:bg-white/10 rounded-xl flex items-center gap-3">
+                <i data-lucide="edit-2" class="w-4 h-4"></i> Rename
+            </button>
+            <hr class="border-white/10 my-1">
+            <button @click="confirmAction('Delete '+personMenuTarget.display+'? Photos keep their faces but this person will be removed.','deletePerson::'+personMenuTarget.id); closePersonMenu()" class="w-full px-4 py-3 text-left text-sm text-red-400 hover:bg-red-500/10 rounded-xl flex items-center gap-3">
+                <i data-lucide="trash-2" class="w-4 h-4"></i> Delete
+            </button>
+        </div>
+    </div>
+
+    <!-- App Logic -->
+    <script>
+        function app() {
+            return {
+                tab: 'discover',
+                loading: false,
+                allPhotos: [],
+                moments: [],
+                people: [],
+                insights: [],
+                searchQuery: '',
+                filteredPeople: [],
+                peopleVersion: 0,
+                toast: { show: false, text: '', type: 'info' },
+                uploading: false,
+                uploadProgress: 0,
+                uploadStatus: 'idle', // overall status: idle, uploading, processing, done, error
+                currentUploadJobs: {}, // {jobId: {status: string, filename: string, progress: number, found_people: []}}
+                lastUploadedFiles: null, // For retry functionality
+                uploadPreview: null, // For single-file preview
+                
+                // Onboarding
+                showOnboarding: false,
+                onboardingStep: 1,
+                
+                // Modal States
+                addMomentOpen: false,
+                newMomentLabel: '',
+                selectedPhotos: [],
+                
+                // Person Gallery
+                pgOpen: false,
+                pgPerson: null,
+                pgPhotos: [],
+                personMenuOpen: false,
+                personMenuTarget: null,
+                rnOpen: false,
+                rnId: '',
+                rnInput: '',
+
+                // Moment Context Menu
+                momentMenuOpen: false,
+                momentMenuTarget: null,
+                mgRenameOpen: false,
+                mgRenameTarget: null,
+                mgRenameInput: '',
+
+                // Moment Gallery
+                mgOpen: false,
+                mgMoment: null,
+                mgPhotos: [],
+                mgEdit: false,
+                
+                // Selection / Bulk
+                selectionMode: false,
+                selectedItems: [],
+                customFolderName: '',
+                
+                // Lightbox
+                lbOpen: false,
+                lbIndex: 0,
+                lbPhotos: [],
+                lbDetail: true,
+                lbCaption: '',
+                lbPhoto: null,
+                lbCaptionEdit: false,
+                lbMoveShow: false,
+                lbDeleteShow: false,
+                lbSwipeOffset: 0,
+                lbTStart: 0,
+                lbTStartTime: 0,
+                confirmShow: false,
+                confirmMessage: '',
+                confirmAction: '',
+
+                async init() {
+                    // Global helper for rendered inline links
+                    window.dispatchInsightAction = (type, id) => {
+                        const app = document.querySelector('[x-data]').__x.$data;
+                        app.handleInsightAction({type: type, id: id, path: id});
+                    };
+
+                    this.showOnboarding = !localStorage.getItem('zaiya_onboarded');
+                    await this.refreshAll();
+                    
+                    // Recover active upload jobs on refresh
+                    try {
+                        const activeRes = await fetch('/api/upload/active-jobs');
+                        const activeJobs = await activeRes.json();
+                        if (Object.keys(activeJobs).length > 0) {
+                            this.currentUploadJobs = activeJobs;
+                            this.uploading = true;
+                            this.uploadStatus = 'processing';
+                            this.pollAllStatuses();
+                        }
+                    } catch (e) {}
+
+                    this.$nextTick(() => lucide.createIcons());
+                    
+                    // Keyboard navigation for Lightbox
+                    window.addEventListener('keydown', (e) => {
+                        if (!this.lbOpen) return;
+                        if (e.key === 'ArrowRight') this.lbNext();
+                        if (e.key === 'ArrowLeft') this.lbPrev();
+                        if (e.key === 'Escape') this.lbOpen = false;
+                    });
+
+                    // Lucide watcher
+                    this.$watch('tab', () => this.$nextTick(() => lucide.createIcons()));
+                    this.$watch('lbOpen', () => this.$nextTick(() => lucide.createIcons()));
+                    this.$watch('pgOpen', () => this.$nextTick(() => lucide.createIcons()));
+                    this.$watch('mgOpen', () => this.$nextTick(() => lucide.createIcons()));
+                    this.$watch('searchQuery', () => this.filterPeople());
+                },
+
+                flash(text, type = 'info') {
+                    this.toast = { show: true, text, type };
+                    setTimeout(() => this.toast.show = false, 3000);
+                },
+
+                async refreshAll() {
+                    try {
+                        const [pRes, mRes, pRegRes, iRes] = await Promise.all([
+                            fetch('/api/photos'),
+                            fetch('/api/moments'),
+                            fetch('/api/people'),
+                            fetch('/api/insights')
+                        ]);
+                        this.allPhotos = await pRes.json() || [];
+                        this.moments = (await mRes.json() || []).sort((a,b) => b.timestamp - a.timestamp);
+                        this.insights = await iRes.json() || [];
+                        const newPeople = await pRegRes.json() || [];
+                        // Pre-compute avatarUrl for each person so Alpine gets a plain string
+                        for (const p of newPeople) {
+                            if (p.avatar) {
+                                const path = p.avatar.replace('/root/memories-sorted/data/input/', '');
+                                if (p.face_bbox && p.face_bbox.length >= 4) {
+                                    const [cx, cy, fw, fh] = p.face_bbox;
+                                    p.avatarUrl = `/crop/${path}?crop=${cx},${cy},${fw},${fh}&t=${Date.now()}`;
+                                } else {
+                                    p.avatarUrl = `/images/${path}?t=${Date.now()}`;
+                                }
+                            } else {
+                                p.avatarUrl = '';
+                            }
+                        }
+                        this.people = newPeople;
+                        this.peopleVersion++;
+
+                        // Sync active Moment Gallery state
+                        if (this.mgOpen && this.mgMoment) {
+                            const updatedMoment = this.moments.find(m => m.id === this.mgMoment.id);
+                            if (updatedMoment) {
+                                this.mgMoment = updatedMoment;
+                                // Combine actual member paths + any ghosts tagged for this moment
+                                const actualPhotos = (updatedMoment.member_paths || []).map(fp => this.allPhotos.find(p => p.file_path === fp)).filter(Boolean);
+                                const ghostPhotos = this.allPhotos.filter(p => p.is_ghost && p.context_type === 'moment' && p.context_id === updatedMoment.id);
+                                this.mgPhotos = [...ghostPhotos, ...actualPhotos];
+                            }
+                        }
+                    } catch (e) {
+                        this.flash('System connection error', 'error');
+                    }
+                },
+
+                filterPeople() {
+                    // Trigger reactivity for search
+                    this.people = [...this.people];
+                },
+
+                get filteredPeople() {
+                    const q = (this.searchQuery || '').toLowerCase();
+                    return this.people.filter(pe => {
+                        const name = pe.display || 'Person';
+                        return name.toLowerCase().includes(q);
+                    });
+                },
+
+                getAvatarSrc(p) { return p.avatarUrl || ''; },
+                getPersonStyle(p) { return ''; },
+
+                openLightbox(idx, photos) {
+                    this.lbIndex = idx;
+                    this.lbPhotos = [...photos];
+                    this.lbDetail = true;
+                    this.lbCaptionEdit = false;
+                    this.lbSwipeOffset = 0;
+                    this.lbOpen = true;
+                },
+
+                lbTEnd(endX) {
+                    const diff = this.lbTStart - endX;
+                    const time = Date.now() - this.lbTStartTime;
+                    if (Math.abs(diff) > 50 && time < 300) {
+                        if (diff > 0) this.lbNext();
+                        else this.lbPrev();
+                    }
+                    this.lbSwipeOffset = 0;
+                },
+
+                toggleSelection(path) {
+                    if (this.selectedItems.includes(path)) {
+                        this.selectedItems = this.selectedItems.filter(x => x !== path);
+                    } else {
+                        this.selectedItems.push(path);
+                    }
+                },
+
+                exitSelection() {
+                    this.selectionMode = false;
+                    this.selectedItems = [];
+                },
+
+                completeOnboarding() {
+                    this.showOnboarding = false;
+                    localStorage.setItem('zaiya_onboarded', 'true');
+                    this.flash('Welcome aboard!');
+                },
+
+                // Person Gallery
+                openPerson(p) {
+                    this.pgPerson = p;
+                    this.pgPhotos = this.allPhotos.filter(x => (x.person_ids || []).includes(p.id));
+                    this.pgOpen = true;
+                },
+                
+                openPersonMenu(p, event) {
+                    event.stopPropagation();
+                    this.personMenuTarget = p;
+                    this.personMenuOpen = true;
+                },
+                
+                closePersonMenu() {
+                    this.personMenuOpen = false;
+                    this.personMenuTarget = null;
+                },
+
+                openRename(p) {
+                    this.rnId = p.id;
+                    this.rnInput = p.display || '';
+                    this.rnOpen = true;
+                    this.$nextTick(() => { if (this.$refs.rnField) this.$refs.rnField.focus(); });
+                },
+
+                async doRename() {
+                    if (!this.rnInput.trim()) return;
+                    try {
+                        await fetch('/api/rename', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ person_id: this.rnId, new_name: this.rnInput })
+                        });
+                        this.flash('Renamed to "' + this.rnInput + '"');
+                        this.rnOpen = false;
+                        await this.refreshAll();
+                    } catch(e) { this.flash('Rename failed', 'error'); }
+                },
+
+                // Moment Context Menu
+                openMomentMenu(m, event) {
+                    event.stopPropagation();
+                    this.momentMenuTarget = m;
+                    this.momentMenuOpen = true;
+                },
+
+                closeMomentMenu() {
+                    this.momentMenuOpen = false;
+                    this.momentMenuTarget = null;
+                },
+
+                openRenameMoment(m) {
+                    this.mgRenameTarget = m;
+                    this.mgRenameInput = m.label || '';
+                    this.mgRenameOpen = true;
+                },
+
+                async doRenameMoment() {
+                    if (!this.mgRenameInput.trim()) return;
+                    try {
+                        await fetch('/api/moments/rename', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ moment_id: this.mgRenameTarget.id, new_label: this.mgRenameInput })
+                        });
+                        this.flash('Renamed to "' + this.mgRenameInput + '"');
+                        this.mgRenameOpen = false;
+                        await this.refreshAll();
+                    } catch(e) { this.flash('Rename failed', 'error'); }
+                },
+
+                // Moment Gallery
+                openMomentGallery(m) {
+                    this.mgEdit = false;
+                    this.mgMoment = m;
+                    // Combine actual member paths + any ghosts tagged for this moment
+                    const actualPhotos = (m.member_paths || []).map(fp => this.allPhotos.find(p => p.file_path === fp) || { file_path: fp, caption: '', processing_status: 'done' }).filter(Boolean);
+                    const ghostPhotos = this.allPhotos.filter(p => p.is_ghost && p.context_type === 'moment' && p.context_id === m.id);
+                    this.mgPhotos = [...ghostPhotos, ...actualPhotos];
+                    this.mgOpen = true;
+                },
+
+                lbNext() { if (this.lbIndex < this.lbPhotos.length - 1) { this.lbIndex++; } },
+                lbPrev() { if (this.lbIndex > 0) { this.lbIndex--; } },
+                lbFromPhotos(arr, idx) {
+                    this.lbPhotos = [...arr];
+                    this.lbIndex = idx;
+                    this.lbDetail = true;
+                    this.lbOpen = true;
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                async doUpload(files) {
+                    if (!files || !files.length) return;
+                    this.lastUploadedFiles = files; // Store for retry
+                    this.uploading = true;
+                    this.uploadStatus = 'uploading';
+                    this.currentUploadJobs = {};
+                    this.uploadPreview = null; // Clear old preview
+
+                    // Local Preview for first image
+                    const reader = new FileReader();
+                    reader.onload = (e) => this.uploadPreview = e.target.result;
+                    reader.readAsDataURL(files[0]);
+
+                    let url = '/api/upload';
+                    if (this.mgOpen && this.mgMoment) {
+                        url += `?context_type=moment&context_id=${this.mgMoment.id}`;
+                    }
+
+                    try {
+                        for (const file of files) { // Iterate through selected files
+                            const formData = new FormData();
+                            formData.append('file', file); // Append each file individually
+                            
+                            // Let's make individual upload calls to the API for each file
+                            const res = await fetch(url, { method: 'POST', body: formData });
+                            const data = await res.json();
+
+                            if (data.job_id) {
+                                this.currentUploadJobs[data.job_id] = { 
+                                    status: 'queued', 
+                                    filename: file.name, 
+                                    progress: 0, 
+                                    found_people: [] 
+                                };
+                            } else {
+                                throw new Error('No Job ID received for ' + file.name);
+                            }
+                        }
+                        this.pollAllStatuses(); // Start polling for all jobs
+                    } catch (e) {
+                        this.flash(`Upload failed: ${e.message || e}`, 'error');
+                        this.resetUpload();
+                    }
+                },
+
+                async pollAllStatuses() {
+                    let allDone = true;
+                    let anyError = false;
+                    let overallProgress = 0;
+                    let completedJobs = 0;
+                    let anyDoneThisTurn = false;
+
+                    const jobIds = Object.keys(this.currentUploadJobs);
+                    if (jobIds.length === 0) {
+                        this.resetUpload();
+                        return;
+                    }
+
+                    for (const jobId of jobIds) {
+                        const job = this.currentUploadJobs[jobId];
+                        
+                        // Skip jobs that are already terminal in local state
+                        if (job.status === 'done' || job.status === 'error') {
+                            completedJobs++;
+                            if (job.status === 'done') overallProgress += 100;
+                            continue;
+                        }
+
+                        try {
+                            const res = await fetch(`/api/upload/status/${jobId}`);
+                            const data = await res.json();
+                            
+                            if (data.status === 'done' && job.status !== 'done') {
+                                anyDoneThisTurn = true;
+                            }
+                            
+                            job.status = data.status;
+                            job.error = data.error; // Capture error message
+                            job.found_people = data.found_people || [];
+                            
+                            if (job.status === 'done' || job.status === 'error') {
+                                completedJobs++;
+                            } else {
+                                allDone = false;
+                            }
+                            if (job.status === 'error') {
+                                anyError = true;
+                            }
+                            // Progress estimation
+                            if (job.status === 'uploading') overallProgress += 20;
+                            else if (job.status === 'syncing') overallProgress += 40;
+                            else if (job.status === 'faces') overallProgress += 60;
+                            else if (job.status === 'vectors') overallProgress += 80;
+                            else if (job.status === 'done') overallProgress += 100;
+                        } catch (e) {
+                            job.status = 'error';
+                            job.error = `Network error: ${e.message || e}`;
+                            anyError = true;
+                            allDone = false;
+                            completedJobs++;
+                        }
+                    }
+
+                    // Reactively refresh grid if any job finished
+                    if (anyDoneThisTurn) {
+                        this.refreshAll();
+                    }
+
+                    this.uploadProgress = (overallProgress / jobIds.length) || 0;
+                    this.uploadStatus = anyError ? 'error' : (allDone ? 'done' : 'processing');
+                    
+                    if (allDone) {
+                        const allFoundPeople = Object.values(this.currentUploadJobs).flatMap(j => j.found_people || []);
+                        const foundMsg = allFoundPeople.length > 0 ? `AI found ${[...new Set(allFoundPeople)].join(', ')}!` : 'AI processing complete';
+                        this.flash(anyError ? 'Some uploads failed' : foundMsg, anyError ? 'error' : 'success');
+                        
+                        // Immediate refresh one last time
+                        this.refreshAll();
+
+                        setTimeout(() => {
+                            this.resetUpload();
+                        }, 3000);
+                    } else {
+                        setTimeout(() => this.pollAllStatuses(), 800);
+                    }
+                },
+
+                getProcessLabel() {
+                    const statuses = Object.values(this.currentUploadJobs).map(j => j.status);
+                    if (statuses.length === 0) return 'Idle';
+                    if (statuses.includes('error')) return 'Error in pipeline';
+                    if (statuses.includes('uploading')) return 'Sending to Local AI...';
+                    if (statuses.includes('syncing')) return 'Syncing Filesystem...';
+                    if (statuses.includes('faces')) return 'Detecting Faces...';
+                    if (statuses.includes('vectors')) return 'Embedding CLIP Scenes...';
+                    if (statuses.includes('queued')) return 'Queued for processing...';
+                    return 'AI is working...';
+                },
+
+                get totalDoneCount() {
+                    return Object.values(this.currentUploadJobs).filter(job => job.status === 'done' || job.status === 'error').length;
+                },
+
+                get isTotalDone() {
+                    return this.totalDoneCount === Object.keys(this.currentUploadJobs).length;
+                },
+
+                resetUpload() {
+                    this.uploading = false;
+                    this.uploadStatus = 'idle';
+                    this.currentUploadJobs = {};
+                    this.lastUploadedFiles = null;
+                    this.uploadPreview = null;
+                },
+
+
+                async doAddMoment() {
+                    if (!this.newMomentLabel.trim()) return;
+                    await fetch('/api/moments/create', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ label: this.newMomentLabel, photo_paths: this.selectedPhotos })
+                    });
+                    this.addMomentOpen = false;
+                    this.newMomentLabel = '';
+                    this.selectedPhotos = [];
+                    this.flash('Moment created');
+                    await this.refreshAll();
+                },
+
+                async doAddToMoment(momentId) {
+                    const paths = this.selectionMode ? this.selectedItems : [this.lbPhotos[this.lbIndex]?.file_path];
+                    for (const path of paths) {
+                        if (!path) continue;
+                        await fetch('/api/moments/add-photo', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ moment_id: momentId, photo_path: path })
+                        });
+                    }
+                    this.lbMoveShow = false;
+                    this.flash(paths.length > 1 ? 'Photos added' : 'Photo added');
+                    this.exitSelection();
+                    await this.refreshAll();
+                },
+
+                async doMovePhoto(target) {
+                    const paths = this.selectionMode ? this.selectedItems : [this.lbPhotos[this.lbIndex]?.file_path];
+                    for (const path of paths) {
+                        if (!path) continue;
+                        await fetch('/api/photos/move', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ file_path: path, target_folder: target })
+                        });
+                    }
+                    this.lbMoveShow = false;
+                    this.lbOpen = false;
+                    this.flash(paths.length > 1 ? 'Photos moved' : 'Photo moved');
+                    this.exitSelection();
+                    await this.refreshAll();
+                },
+
+                async lbSaveCaption() {
+                    const photo = this.lbPhotos[this.lbIndex];
+                    if (!photo) return;
+                    await fetch('/api/photos/caption', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ file_path: photo.file_path, caption: this.lbCaption })
+                    });
+                    photo.caption = this.lbCaption;
+                    this.lbCaptionEdit = false;
+                    this.flash('Caption saved');
+                },
+
+                getLbPeople() {
+                    const photo = this.lbPhotos[this.lbIndex];
+                    if (!photo || !photo.person_ids) return [];
+                    // Return unique people only
+                    const uniqueIds = [...new Set(photo.person_ids)];
+                    return this.people.filter(p => uniqueIds.includes(p.id));
+                },
+
+                getLbFaceCrop(person) {
+                    const photo = this.lbPhotos[this.lbIndex];
+                    if (!photo || !person) return '';
+                    
+                    const asgn = (photo.assignments || []).find(a => a.person_id === person.id);
+                    if (asgn && asgn.bbox && asgn.bbox.length === 4 && photo.resolution) {
+                        const [x1, y1, x2, y2] = asgn.bbox;
+                        const [w, h] = photo.resolution;
+                        const fw = x2 - x1;
+                        const fh = y2 - y1;
+                        const cx = ((x1 + fw/2) / w * 100).toFixed(2);
+                        const cy = ((y1 + fh/2) / h * 100).toFixed(2);
+                        const filename = photo.file_path.replace('/root/memories-sorted/data/input/', '');
+                        return `/crop/${filename}?crop=${cx},${cy},${fw.toFixed(0)},${fh.toFixed(0)}&t=${Date.now()}`;
+                    }
+                    return person.avatarUrl;
+                },
+
+                handleInsightAction(action) {
+                    if (!action) return;
+
+                    switch (action.type) {
+                        case 'person':
+                            this.tab = 'people';
+                            const personToOpen = this.people.find(p => p.id === action.id);
+                            if (personToOpen) {
+                                this.openPerson(personToOpen);
+                            } else {
+                                this.flash('Person not found.', 'error');
+                            }
+                            break;
+                        case 'photo':
+                            const photoToOpen = this.allPhotos.find(p => p.file_path === action.path);
+                            if (photoToOpen) {
+                                const index = this.allPhotos.indexOf(photoToOpen);
+                                this.openLightbox(index, this.allPhotos);
+                            } else {
+                                this.flash('Photo not found.', 'error');
+                            }
+                            break;
+                        default:
+                            console.warn('Unknown insight action type:', action.type);
+                            break;
+                    }
+                },
+
+                renderInsightMessage(msg) {
+                    if (!msg) return '';
+                    // Pattern: [[type:id|Label]]
+                    return msg.replace(/\[\[(person|photo):([^|\]]+)\|([^\]]+)\]\]/g, (match, type, id, label) => {
+                        return `<span class="text-blue-400 underline cursor-pointer hover:text-blue-300 transition-colors" onclick="window.dispatchInsightAction('${type}', '${id}')">${label}</span>`;
+                    });
+                },
+
+                getLiftedUrl(pId) {
+                    return `/api/crop/premium/${pId}`;
+                },
+
+                confirmAction(msg, action) {
+                    this.confirmMessage = msg;
+                    this.confirmAction = action;
+                    this.confirmShow = true;
+                },
+
+                async doConfirm() {
+                    const action = this.confirmAction;
+                    this.confirmShow = false;
+                    if (action === 'bulkDelete') {
+                        for (const path of this.selectedItems) {
+                            await fetch('/api/photos/delete', {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify({ file_path: path })
+                            });
+                        }
+                        this.flash('Deleted ' + this.selectedItems.length + ' photos');
+                        this.exitSelection();
+                        await this.refreshAll();
+                    }
+                    else if (action === 'regenerateMoments') {
+                        await fetch('/api/moments/regenerate', { method: 'POST' });
+                        this.flash('Moments regenerated');
+                        await this.refreshAll();
+                    }
+                    else if (action.startsWith('deletePerson::')) {
+                        const id = action.split('::')[1];
+                        await fetch('/api/people/delete', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ person_id: id })
+                        });
+                        this.flash('Person deleted');
+                        await this.refreshAll();
+                    }
+                    else if (action.startsWith('deleteMoment::')) {
+                        const id = action.split('::')[1];
+                        await fetch('/api/moments/delete', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ moment_id: id })
+                        });
+                        this.flash('Moment deleted');
+                        await this.refreshAll();
+                    }
+                },
+
+                async doDeletePhoto() {
+                    const photo = this.lbPhotos[this.lbIndex];
+                    if (!photo) return;
+                    const path = photo.file_path;
+
+                    try {
+                        await fetch('/api/photos/delete', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ file_path: path })
+                        });
+                        
+                        // 1. Remove from Lightbox
+                        this.lbPhotos.splice(this.lbIndex, 1);
+                        if (this.lbIndex >= this.lbPhotos.length) this.lbIndex = Math.max(0, this.lbPhotos.length - 1);
+                        
+                        // 2. Remove from global catalogs immediately for reactivity
+                        this.allPhotos = this.allPhotos.filter(p => p.file_path !== path);
+                        if (this.mgOpen) this.mgPhotos = this.mgPhotos.filter(p => p.file_path !== path);
+                        if (this.pgOpen) this.pgPhotos = this.pgPhotos.filter(p => p.file_path !== path);
+
+                        this.lbDeleteShow = false;
+                        if (this.lbPhotos.length === 0) this.lbOpen = false;
+                        
+                        this.flash('Photo deleted');
+                        
+                        // 3. Full background refresh to sync Moments/Counts
+                        await this.refreshAll();
+                    } catch(e) {
+                        this.flash('Delete failed', 'error');
+                    }
+                }
             }
-        }catch(e){this.flash('Move failed','error');this.lbMoveShow=false}
-    },
-    lbDeletePhoto(){
-        if(!this.lbPhoto)return;this.lbDeleteShow=true;
-    },
-    async doDeletePhoto(){
-        const p=this.lbPhoto;if(!p)return;
-        try{
-            await fetch('/api/photos/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file_path:p.file_path})});
-            this.lbPhotos.splice(this.lbIdx,1);
-            if(this.lbIdx>=this.lbPhotos.length)this.lbIdx=Math.max(0,this.lbPhotos.length-1);
-            this.lbDeleteShow=false;
-            this.allPhotos=this.allPhotos.filter(x=>x.file_path!==p.file_path);
-            this.pgPhotos=this.pgPhotos.filter(x=>x.file_path!==p.file_path);
-            this.mgPhotos=this.mgPhotos.filter(x=>x.file_path!==p.file_path);
-        }catch(e){this.flash('Delete failed','error');this.lbDeleteShow=false}
-    },
-    // Helpers
-    getPhotoIdx(p){return this.allPhotos.findIndex(x=>x.file_path===p.file_path)},
-    findPhotoIdx(fp){return this.allPhotos.findIndex(x=>x.file_path===fp)},
-    imgThumb(i){return'/images/'+((i?.file_path||i?.cover_image||'').split('/').pop())},
-    fmtDate(d){try{return new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}catch(e){return''+d}},
-    getMomentDateRange(m){
-        if(!m?.member_paths)return'Captured recently';
-        try{const ds=m.member_paths.map(fp=>{const ph=this.allPhotos.find(x=>x.file_path===fp);return ph?.analyzed_at?new Date(ph.analyzed_at).getTime():0}).filter(d=>d>0);if(!ds.length)return'Captured recently';const a=new Date(Math.min(...ds)),b=new Date(Math.max(...ds));const f=a.toLocaleDateString('en-US',{month:'short',day:'numeric'}),l=b.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});return a.toDateString()===b.toDateString()?f:f+' — '+l}catch(e){return'Captured recently'}
-    },
-}}
-</script>
+        }
+    </script>
 </body>
 </html>

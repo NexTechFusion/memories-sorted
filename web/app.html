@@ -322,89 +322,102 @@
     </nav>
 
     <!-- Lightbox -->
-    <div x-show="lbOpen" x-cloak class="fixed inset-0 z-[70] bg-black flex flex-col animate-in fade-in duration-300" style="display:none">
-            <div class="absolute top-0 inset-x-0 p-6 flex justify-between items-center z-10 bg-gradient-to-b from-black/80 to-transparent">
-                <button @click="lbOpen = false" class="w-12 h-12 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center">
+    <!-- Modal: Full-Screen Lightbox with Swipe Nav + Swipe-Up Info -->
+        <div x-show="lbOpen" x-cloak class="fixed inset-0 z-[70] bg-black flex flex-col animate-in fade-in duration-300" style="display:none">
+            <!-- Top Bar -->
+            <div class="absolute top-0 inset-x-0 p-4 flex justify-between items-center z-10 bg-gradient-to-b from-black/80 to-transparent">
+                <button @click.stop="lbOpen = false" class="w-12 h-12 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center active:scale-90 transition-transform">
                     <i data-lucide="chevron-left" class="w-6 h-6 text-white"></i>
                 </button>
                 <div class="flex gap-2">
-                    <button @click="lbMoveShow = true" class="w-12 h-12 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center">
+                    <button @click.stop="lbMoveShow = true" class="w-12 h-12 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center active:scale-90 transition-transform">
                         <i data-lucide="folder-plus" class="w-5 h-5 text-white"></i>
                     </button>
-                    <button @click="lbDeleteShow = true" class="w-12 h-12 bg-red-500/20 backdrop-blur-md rounded-2xl flex items-center justify-center border border-red-500/20">
+                    <button @click.stop="lbDeleteShow = true" class="w-12 h-12 bg-red-500/20 backdrop-blur-md rounded-2xl flex items-center justify-center border border-red-500/20 active:scale-90 transition-transform">
                         <i data-lucide="trash-2" class="w-5 h-5 text-red-500"></i>
                     </button>
                 </div>
             </div>
 
-            <div class="flex-1 flex flex-col items-center justify-center px-4 relative pt-20">
-                <div class="flex-1 flex items-center justify-center w-full relative group">
-                    <!-- Navigation Arrows (Desktop) -->
-                    <button @click="lbPrev()" class="absolute left-0 top-1/2 -translate-y-1/2 w-14 h-14 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20 pointer-events-auto">
-                        <i data-lucide="chevron-left" class="w-8 h-8"></i>
-                    </button>
-                    <button @click="lbNext()" class="absolute right-0 top-1/2 -translate-y-1/2 w-14 h-14 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20 pointer-events-auto">
-                        <i data-lucide="chevron-right" class="w-8 h-8"></i>
-                    </button>
+            <!-- Image Area with Animated Slide Transitions -->
+            <div class="flex-1 flex items-center justify-center relative overflow-hidden" style="min-height: 0;">
+                <!-- Current image (with drag transform) -->
+                <img :src="lbPhotos[lbIndex] ? '/images/' + lbPhotos[lbIndex].file_path.replace('/root/memories-sorted/data/input/', '') : ''"
+                     :key="'photo-' + lbPhotos[lbIndex]?.file_path"
+                     class="max-w-full max-h-full object-contain transition-transform duration-200 select-none"
+                     :style="lbDragX !== 0 ? 'transform: translateX(' + lbDragX + 'px) scale(' + (1 - Math.abs(lbDragX) * 0.0005) + '); opacity: ' + (1 - Math.abs(lbDragX) * 0.002) : ''"
+                     @touchstart.stop.passive="lbTouchStart($event, 'horizontal')"
+                     @touchmove.stop.passive="lbTouchMove($event, 'horizontal')"
+                     @touchend.stop.passive="lbTouchEnd('horizontal')">
+            </div>
 
-                    <img :src="lbPhotos[lbIndex] ? '/images/' + lbPhotos[lbIndex].file_path.replace('/root/memories-sorted/data/input/', '') : ''" 
-                         class="max-w-full max-h-[60vh] object-contain rounded-2xl shadow-2xl transition-all duration-300 pointer-events-none"
-                         :class="lbSwipeOffset !== 0 ? 'scale-95 opacity-50' : ''"
-                         @touchstart="lbTStart = $event.touches[0].clientX; lbTStartTime = Date.now()"
-                         @touchend="lbTEnd($event.changedTouches[0].clientX)">
-                </div>
-
-                <div class="w-full max-w-2xl mt-8 mb-4 overflow-x-auto scrollbar-none flex gap-3 px-4 py-3 bg-zinc-900/50 backdrop-blur-2xl rounded-3xl border border-white/5 shadow-2xl">
+            <!-- Thumbnail Strip (auto-snaps to active) -->
+            <div class="relative z-10 px-4 pb-2"
+                 @touchstart.stop.passive="lbThumbDragX = $event.touches[0].clientX"
+                 @touchmove.stop.passive="lbThumbScroll($event)">
+                <div class="max-w-2xl mx-auto overflow-x-auto scrollbar-none flex gap-2 px-2 py-2 bg-zinc-900/60 backdrop-blur-2xl rounded-2xl border border-white/5 shadow-2xl" x-ref="thumbStrip">
                     <template x-for="(p, i) in lbPhotos" :key="'strip-' + p.file_path">
-                        <button @click="lbIndex = i" 
-                                class="flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 transition-all duration-300 ring-blue-500/30"
-                                :class="lbIndex === i ? 'border-blue-500 scale-110 ring-4 z-10 shadow-blue-500/20' : 'border-transparent opacity-40 grayscale-[0.5] scale-95 hover:opacity-100 hover:scale-100 hover:grayscale-0'">
+                        <button @click.stop="switchPhoto(i)"
+                                class="flex-shrink-0 w-14 h-14 rounded-xl overflow-hidden border-2 transition-all duration-300"
+                                :class="lbIndex === i ? 'border-blue-500 scale-110 ring-4 ring-blue-500/30 z-10 shadow-lg shadow-blue-500/20' : 'border-white/10 opacity-50 grayscale-[0.3] hover:opacity-80 hover:scale-105 hover:grayscale-0'">
                             <img :src="'/images/' + p.file_path.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover">
                         </button>
                     </template>
                 </div>
             </div>
 
-            <div class="p-8 pb-32 bg-gradient-to-t from-black via-black/80 to-transparent">
-                <div class="max-w-lg mx-auto">
-                    <div x-show="!lbCaptionEdit" @click="lbCaptionEdit = true; lbCaption = lbPhotos[lbIndex]?.caption || ''" class="mb-4 cursor-text">
-                        <p class="text-lg font-medium text-white/90 leading-relaxed italic" 
-                           x-text="lbPhotos[lbIndex]?.caption || 'Add a caption...'"></p>
-                    </div>
-                    <div x-show="lbCaptionEdit" class="mb-4">
-                        <textarea x-model="lbCaption" class="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white outline-none focus:ring-2 focus:ring-blue-500 mb-2"></textarea>
-                        <div class="flex gap-2">
-                            <button @click="lbCaptionEdit = false" class="flex-1 py-3 rounded-xl bg-white/5 text-sm font-bold">Cancel</button>
-                            <button @click="lbSaveCaption()" class="flex-1 py-3 rounded-xl bg-blue-500 text-sm font-bold">Save</button>
+            <!-- Swipe-Up Info Panel -->
+            <div class="relative z-10"
+                 @touchstart.stop.passive="lbTouchStart($event, 'vertical')"
+                 @touchmove.stop.passive="lbTouchMove($event, 'vertical')"
+                 @touchend.stop.passive="lbTouchEnd('vertical')">
+                <!-- Drag Handle -->
+                <div class="flex justify-center py-2 cursor-pointer" @click.stop="lbInfoVisible = !lbInfoVisible">
+                    <div class="w-10 h-1 bg-white/20 rounded-full transition-opacity duration-200"
+                         :class="lbInfoVisible ? 'opacity-100' : 'opacity-50'"></div>
+                </div>
+                <!-- Collapsible Info Content -->
+                <div class="overflow-hidden transition-all duration-300 ease-out"
+                     :style="'max-height: ' + (lbInfoVisible ? '600px' : '0px') + '; opacity: ' + (lbInfoVisible ? '1' : '0')">
+                    <div class="max-w-lg mx-auto px-8 pb-10 pt-4 bg-gradient-to-t from-black via-black/90 to-transparent">
+                        <!-- Caption -->
+                        <div x-show="!lbCaptionEdit" @click.stop="lbCaptionEdit = true; lbCaption = lbPhotos[lbIndex]?.caption || ''" class="mb-4 cursor-text">
+                            <p class="text-lg font-medium text-white/90 leading-relaxed italic"
+                               x-text="lbPhotos[lbIndex]?.caption || 'Add a caption...'"></p>
                         </div>
-                    </div>
-                    <!-- People in this Photo -->
-                    <template x-if="getLbPeople().length > 0">
-                        <div class="mb-8">
-                            <p class="text-[10px] text-zinc-500 uppercase tracking-widest font-black mb-4">People in this photo</p>
-                            <div class="flex flex-wrap gap-3">
-                                <template x-for="pInfo in getLbPeople()" :key="pInfo.id">
-                                    <button @click="lbOpen = false; openPerson(pInfo)" class="flex items-center gap-2 bg-white/5 pr-3 pl-1 py-1 rounded-full border border-white/5 hover:bg-white/10 active:scale-95 transition-all">
-                                        <div class="w-8 h-8 rounded-full overflow-hidden bento-card bg-zinc-800 relative">
-                                            <img :src="getLiftedUrl(pInfo.id)" class="w-full h-full object-cover">
-                                        </div>
-                                        <span class="text-xs font-bold text-zinc-300" x-text="pInfo.display || 'User'"></span>
-                                    </button>
-                                </template>
+                        <div x-show="lbCaptionEdit" class="mb-4">
+                            <textarea x-model="lbCaption" class="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white outline-none focus:ring-2 focus:ring-blue-500 mb-2"></textarea>
+                            <div class="flex gap-2">
+                                <button @click.stop="lbCaptionEdit = false" class="flex-1 py-3 rounded-xl bg-white/5 text-sm font-bold">Cancel</button>
+                                <button @click.stop="lbSaveCaption()" class="flex-1 py-3 rounded-xl bg-blue-500 text-sm font-bold">Save</button>
                             </div>
                         </div>
-                    </template>
-
-                    <div class="flex flex-wrap gap-2 opacity-60">
-                        <template x-for="tag in (lbPhotos[lbIndex]?.ai_desc || '').split(',').slice(0, 5)">
-                            <span class="text-xs font-bold uppercase tracking-wider px-2 py-1 bg-white/10 rounded-lg" x-text="tag.trim()"></span>
+                        <!-- People in this Photo -->
+                        <template x-if="getLbPeople().length > 0">
+                            <div class="mb-6">
+                                <p class="text-[10px] text-zinc-500 uppercase tracking-widest font-black mb-3">People in this photo</p>
+                                <div class="flex flex-wrap gap-3">
+                                    <template x-for="pInfo in getLbPeople()" :key="pInfo.id">
+                                        <button @click.stop="lbOpen = false; openPerson(pInfo)" class="flex items-center gap-2 bg-white/5 pr-3 pl-1 py-1 rounded-full border border-white/5 hover:bg-white/10 active:scale-95 transition-all">
+                                            <div class="w-8 h-8 rounded-full overflow-hidden bento-card bg-zinc-800 relative">
+                                                <img :src="getLiftedUrl(pInfo.id)" class="w-full h-full object-cover">
+                                            </div>
+                                            <span class="text-xs font-bold text-zinc-300" x-text="pInfo.display || 'Person'"></span>
+                                        </button>
+                                    </template>
+                                </div>
+                            </div>
                         </template>
+                        <!-- AI Tags -->
+                        <div class="flex flex-wrap gap-2 opacity-60">
+                            <template x-for="tag in (lbPhotos[lbIndex]?.ai_desc || '').split(',').slice(0, 5)">
+                                <span class="text-xs font-bold uppercase tracking-wider px-2 py-1 bg-white/10 rounded-lg" x-text="tag.trim()"></span>
+                            </template>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
-
     <!-- Modal: Delete Confirmation -->
     <div x-show="lbDeleteShow" x-cloak class="fixed inset-0 z-[75] flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl" style="display:none">
         <div class="bg-zinc-900 border border-white/10 rounded-3xl w-full max-w-sm p-6 shadow-2xl text-center">
@@ -716,6 +729,13 @@
                 lbSwipeOffset: 0,
                 lbTStart: 0,
                 lbTStartTime: 0,
+                // New swipe state
+                lbDragX: 0, lbDragY: 0,
+                lbTouchDir: null,
+                lbTouchStartPos: null,  // { x, y }
+                lbTouchStartTime: 0,
+                lbInfoVisible: false,
+                lbThumbDragX: 0,
                 confirmShow: false,
                 confirmMessage: '',
                 confirmAction: '',
@@ -832,18 +852,65 @@
                     this.lbDetail = true;
                     this.lbCaptionEdit = false;
                     this.lbSwipeOffset = 0;
+                    this.lbDragX = 0;
+                    this.lbDragY = 0;
+                    this.lbInfoVisible = false;
                     this.lbOpen = true;
                 },
 
-                lbTEnd(endX) {
-                    const diff = this.lbTStart - endX;
-                    const time = Date.now() - this.lbTStartTime;
-                    if (Math.abs(diff) > 50 && time < 300) {
-                        if (diff > 0) this.lbNext();
-                        else this.lbPrev();
-                    }
-                    this.lbSwipeOffset = 0;
+                // --- Unified Touch/Swipe Handler ---
+                lbTouchStart(event, defaultDir) {
+                    this.lbTouchStartPos = { x: event.touches[0].clientX, y: event.touches[0].clientY };
+                    this.lbTouchStartTime = Date.now();
+                    this.lbTouchDir = defaultDir;
                 },
+
+                lbTouchMove(event, dirHint) {
+                    if (!this.lbTouchStartPos) return;
+                    const dx = event.touches[0].clientX - this.lbTouchStartPos.x;
+                    const dy = event.touches[0].clientY - this.lbTouchStartPos.y;
+                    const absDx = Math.abs(dx), absDy = Math.abs(dy);
+                    if (!this.lbTouchDir && (absDx + absDy > 10)) {
+                        this.lbTouchDir = absDx > absDy ? 'horizontal' : 'vertical';
+                    }
+                    if (this.lbTouchDir === 'horizontal') {
+                        this.lbDragX = dx;
+                    } else if (this.lbTouchDir === 'vertical') {
+                        this.lbDragY = dy;
+                    }
+                },
+
+                lbTouchEnd(dir) {
+                    if (!this.lbTouchStartPos) return;
+                    const elapsed = Date.now() - this.lbTouchStartTime;
+                    if (this.lbTouchDir === 'horizontal') {
+                        const dx = this.lbDragX;
+                        if (Math.abs(dx) > 50 && elapsed < 500) {
+                            if (dx > 0) this.prevPhoto();
+                            else this.nextPhoto();
+                        }
+                    } else if (this.lbTouchDir === 'vertical') {
+                        const dy = this.lbDragY;
+                        if (dy < -40) this.lbInfoVisible = true;
+                        else if (dy > 60) this.lbInfoVisible = false;
+                    }
+                    this.lbDragX = 0;
+                    this.lbDragY = 0;
+                    this.lbTouchDir = null;
+                    this.lbTouchStartPos = null;
+                },
+
+                switchPhoto(i) {
+                    this.lbIndex = i;
+                    this.lbCaptionEdit = false;
+                    this.lbDragX = 0;
+                    this.$nextTick(() => {
+                        const strip = this.$refs.thumbStrip;
+                        if (strip) strip.scrollTo({ left: i * 60 - strip.clientWidth / 2 + 28, behavior: 'smooth' });
+                    });
+                },
+
+                thumbScroll(event) { /* native scroll */ },
 
                 toggleSelection(path) {
                     if (this.selectedItems.includes(path)) {
@@ -946,8 +1013,14 @@
                     this.mgOpen = true;
                 },
 
-                lbNext() { if (this.lbIndex < this.lbPhotos.length - 1) { this.lbIndex++; } },
-                lbPrev() { if (this.lbIndex > 0) { this.lbIndex--; } },
+                nextPhoto() {
+                    if (this.lbIndex < this.lbPhotos.length - 1) { this.lbIndex++; this.lbCaptionEdit = false; }
+                },
+                prevPhoto() {
+                    if (this.lbIndex > 0) { this.lbIndex--; this.lbCaptionEdit = false; }
+                },
+                lbNext() { this.nextPhoto(); },
+                lbPrev() { this.prevPhoto(); },
                 lbFromPhotos(arr, idx) {
                     this.lbPhotos = [...arr];
                     this.lbIndex = idx;
