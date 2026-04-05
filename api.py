@@ -399,6 +399,51 @@ async def search_photos(query: str = Query(..., min_length=1), limit: int = Quer
         })
     return {"query": query, "count": len(photos), "results": photos}
 
+@app.get("/api/suggestions")
+async def get_suggestions():
+    """Cluster photos by day and person to suggest moments."""
+    if not os.path.exists(INDEX_PATH):
+        return []
+        
+    with open(INDEX_PATH) as f:
+        data = json.load(f)
+        
+    catalog = data.get("image_catalog", [])
+    registry = data.get("person_registry", {})
+    
+    # 1. Group by day
+    from collections import defaultdict
+    days = defaultdict(list)
+    for p in catalog:
+        if p.get("captured_at"):
+            day = p["captured_at"].split("T")[0]
+            days[day].append(p)
+            
+    # 2. Check for candidates
+    # In a real app we'd fetch existing moments to avoid suggesting them
+    suggestions = []
+    for day, photos in days.items():
+        if len(photos) >= 3:
+            pids = set()
+            for p in photos:
+                for a in p.get("assignments", []):
+                    if a.get("person_id"):
+                        pids.add(a.get("person_id"))
+            
+            # Use person names in label
+            people_names = [registry.get(pid, {}).get("name") or "Person" for pid in list(pids)[:2]]
+            label = f"{day} with {', '.join(people_names)}" if people_names else f"Moment from {day}"
+            
+            suggestions.append({
+                "id": f"suggest-{day}",
+                "label": label,
+                "photo_count": len(photos),
+                "people_count": len(pids),
+                "photos": [p["file_path"] for p in photos[:4]]
+            })
+            
+    return suggestions
+
 @app.get("/api/folders")
 async def get_folders():
     """List available folders in data/input."""
@@ -651,9 +696,9 @@ async def get_insights():
     return []
 
 @app.get("/")
-async def root(): return FileResponse("web/app.html")
+async def root(): return FileResponse(os.path.join(BASE_DIR, "web/app.html"))
 
-app.mount("/web", StaticFiles(directory="web"), name="web")
+app.mount("/web", StaticFiles(directory=os.path.join(BASE_DIR, "web")), name="web")
 app.mount("/images", StaticFiles(directory=INPUT_DIR), name="images")
 app.mount("/cache", StaticFiles(directory=CACHE_DIR), name="cache")
 

@@ -8,7 +8,7 @@
   {
     "type": "favorite",
     "title": "Most Photographed",
-    "message": "Paul appears in 6 face detections.\n\nTop people: Paul: 6, Liam baby: 4, Person 70505968: 2, Person CADECBA6: 2, Bunu: 1",
+    "message": "Paul appears in 7 face detections.\n\nTop people: Paul: 7, Liam baby: 4, Person 70505968: 2, Person CADECBA6: 2, Bunu: 1",
     "icon": "\ud83c\udfc6",
     "action": {
       "type": "person",
@@ -16,15 +16,9 @@
     }
   },
   {
-    "type": "reminder",
-    "title": "People Seen Only Once",
-    "message": "You only caught PERSON_511F653F, PERSON_545BAF25, PERSON_DDB0CF08, PERSON_525AA427, PERSON_5EA5827D, PERSON_36D41DAE once. Maybe it is time for a reunion?",
-    "icon": "\ud83d\udc4b"
-  },
-  {
     "type": "stat",
     "title": "Your World in Numbers",
-    "message": "10 unique faces. 17 photos captured.",
+    "message": "17 unique faces. 19 photos captured.",
     "icon": "\ud83c\udf0d"
   },
   {

@@ -1,5 +1,17 @@
 [
   {
+    "id": "MOMENT_003",
+    "label": "Evening with Paul",
+    "cover_image": "/root/memories-sorted/data/input/photo_2026-03-25_13-11-18.jpg",
+    "member_paths": [
+      "/root/memories-sorted/data/input/photo_2026-03-25_13-11-18.jpg",
+      "/root/memories-sorted/data/input/30edd332fb8c4d10824f93a1eb5d2d70.jpeg"
+    ],
+    "count": 2,
+    "created_at": "2026-04-05T17:25:04.650685",
+    "timestamp": 1775402678
+  },
+  {
     "id": "MOMENT_002",
     "label": "Afternoon with Liam baby",
     "cover_image": "/root/memories-sorted/data/input/1000033929.jpg",
@@ -10,7 +22,7 @@
       "/root/memories-sorted/data/input/1000036515.jpg"
     ],
     "count": 4,
-    "created_at": "2026-04-05T16:07:55.654842",
+    "created_at": "2026-04-05T17:25:04.632206",
     "timestamp": 1775383947
   },
   {
@@ -21,7 +33,7 @@
       "/root/memories-sorted/data/input/1000020053.jpg"
     ],
     "count": 1,
-    "created_at": "2026-04-05T16:07:55.640819",
+    "created_at": "2026-04-05T17:25:04.612911",
     "timestamp": 1775383892
   },
   {
@@ -36,7 +48,7 @@
       "/root/memories-sorted/data/input/1000026985.jpg"
     ],
     "count": 5,
-    "created_at": "2026-04-05T16:07:55.625435",
+    "created_at": "2026-04-05T17:25:04.595016",
     "timestamp": 1775383865
   }
 ]

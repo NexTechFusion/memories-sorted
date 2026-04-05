@@ -55,42 +55,7 @@
         </div>
     </div>
 
-    
-    <!-- People Drawer -->
-    <div x-show="peopleDrawer" x-cloak class="fixed inset-0 z-[80]" style="display:none">
-        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="peopleDrawer = false"></div>
-        <div class="absolute right-0 top-0 bottom-0 w-[280px] bg-zinc-900/95 backdrop-blur-md border-l border-white/10 p-6 overflow-y-auto"
-             x-show="peopleDrawer" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0"
-             x-transition:leave="transition ease-in duration-150" x-transition:leave-start="translate-x-0" x-transition:leave-end="translate-x-full">
-            <div class="flex items-center justify-between mb-6">
-                <h2 class="text-xl font-black text-white">People</h2>
-                <button @click="peopleDrawer = false" class="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-zinc-400 hover:text-white">✕</button>
-            </div>
-            <div class="space-y-2">
-                <template x-for="p in people" :key="p.id">
-                    <div @click="peopleDrawer = false; filterByPerson(p.id)" 
-                         class="flex items-center gap-3 p-3 rounded-2xl cursor-pointer border border-transparent hover:border-white/10 transition-all"
-                         :class="activePersonFilter === p.id ? 'border-blue-500/20 bg-blue-500/10' : ''">
-                        <div class="w-10 h-10 rounded-full overflow-hidden bg-zinc-800 flex-shrink-0">
-                            <img :src="getLiftedUrl(p.id)" class="w-full h-full object-cover" @error="$el.style.display='none'">
-                        </div>
-                        <div class="flex-1 min-w-0">
-                            <span class="text-sm font-bold text-white truncate block" x-text="p.display"></span>
-                            <span class="text-[10px] text-zinc-500 font-bold uppercase tracking-wider" x-text="p.count + ' photos'"></span>
-                        </div>
-                    </div>
-                </template>
-                <template x-if="activePersonFilter">
-                    <div class="mt-4 pt-4 border-t border-white/5">
-                        <button @click="clearPersonFilter(); peopleDrawer = false" class="w-full py-3 rounded-2xl border border-zinc-700 text-sm font-bold text-zinc-400 hover:text-white hover:border-zinc-600 transition-all">
-                            Clear Filter
-                        </button>
-                    </div>
-                </template>
-            </div>
-        </div>
-    </div>
-<!-- Toast Component -->
+    <!-- Toast Component -->
     <div x-show="toast.show" x-transition.duration.300ms 
          class="fixed top-16 left-1/2 -translate-x-1/2 z-[9999] px-6 py-3 rounded-full text-sm font-semibold toast-anim shadow-2xl border border-white/10"
          :class="toast.type==='error'?'bg-red-500/90':'bg-zinc-800/90'" x-text="toast.text"></div>
@@ -125,23 +90,26 @@
     <!-- Main Navigation Content -->
     <main class="pb-32 min-h-screen">
         
-        <!-- Tab: Timeline -->
-        <div x-show="tab === 'timeline'" x-cloak class="p-6 max-w-2xl mx-auto">
+        <!-- Tab: Discover -->
+        <div x-show="tab === 'discover'" x-cloak class="p-6 max-w-2xl mx-auto">
             <header class="mb-8 pt-4">
-                <h1 class="text-4xl font-black tracking-tight mb-2">Timeline</h1>
-                <p class="text-zinc-500 font-medium">Your life, in order.</p>
+                <h1 class="text-4xl font-black tracking-tight mb-2">Discover</h1>
+                <p class="text-zinc-500 font-medium">Sorted by face. Understood by AI.</p>
             </header>
 
-            <!-- Filter Banner -->
-            <div x-show="activePersonFilter" class="mb-4">
-                <div class="flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 rounded-2xl px-4 py-2">
-                    <span class="text-sm text-blue-400 font-bold" x-text="'Showing: ' + (activePersonDisplay || 'Person')"></span>
-                    <button @click="clearPersonFilter()" class="ml-auto text-blue-400 hover:text-blue-300 text-sm font-bold">✕ Clear</button>
+            <!-- Empty State -->
+            <template x-if="allPhotos.length === 0">
+                <div class="flex flex-col items-center justify-center py-20 text-center">
+                    <div class="w-20 h-20 bg-zinc-900 rounded-full flex items-center justify-center mb-4 border border-white/5">
+                        <i data-lucide="image" class="w-10 h-10 text-zinc-700"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-zinc-300">No Memories Yet</h3>
+                    <p class="text-zinc-500 max-w-xs mx-auto mt-2">Upload your first photos to let the AI organize your world.</p>
                 </div>
-            </div>
+            </template>
 
-            <!-- AI Insights -->
-            <div x-show="insights.length > 0 && !activePersonFilter" class="flex gap-4 overflow-x-auto pb-8 -mx-6 px-6 scrollbar-none">
+            <!-- AI Insights Carousel -->
+            <div x-show="insights.length > 0" class="flex gap-4 overflow-x-auto pb-8 -mx-6 px-6 scrollbar-none">
                 <template x-for="insight in insights" :key="insight.type">
                     <div class="bento-card p-5 rounded-3xl min-w-[300px] max-w-[300px] flex flex-col justify-between transition-all hover:border-blue-500/20">
                         <div>
@@ -162,82 +130,256 @@
                 </template>
             </div>
 
-            <!-- Suggestions -->
-            <template x-for="s in suggestions" :key="'SUGGEST-'+s.id">
-                <div class="mb-6">
-                    <div class="bento-card p-4 rounded-3xl border border-amber-500/10 bg-gradient-to-br from-amber-500/5 to-orange-500/5">
-                        <div class="flex items-center justify-between mb-3">
-                            <div class="flex items-center gap-2">
-                                <span class="text-lg">💡</span>
-                                <h4 class="font-bold text-amber-300 text-sm">Suggested Moment</h4>
+            <section x-show="people.length > 0" class="mb-8">
+                <h2 class="text-lg font-bold mb-4 flex items-center gap-2">
+                    <i data-lucide="users" class="w-5 h-5 text-blue-500"></i> Your People
+                </h2>
+                <div class="flex gap-4 overflow-x-auto pb-4 -mx-6 px-6 scrollbar-none">
+                    <template x-for="p in people.slice(0, 10)" :key="p.id">
+                        <button @click="openPerson(p)" class="flex-shrink-0 group w-16">
+                            <div class="w-16 h-16 rounded-2xl overflow-hidden mb-2 bento-card relative">
+                                <!-- Background Fallback (Square Crop) -->
+                                <img :src="getAvatarSrc(p)"
+                                     :style="getPersonStyle(p)"
+                                     class="w-full h-full object-cover opacity-20 blur-[2px]">
+                                <!-- Floating "Lifted" Subject -->
+                                <div class="absolute inset-0 flex items-center justify-center p-1">
+                                    <img :src="getLiftedUrl(p.id)" 
+                                         @error="$el.style.display='none'"
+                                         class="w-full h-full object-contain drop-shadow-[0_5px_5px_rgba(0,0,0,0.5)] scale-110 group-hover:scale-125 transition-transform duration-500">
+                                </div>
+                                <div class="absolute inset-x-0 bottom-0 bg-black/40 h-1/3 flex items-end justify-center pb-0.5">
+                                    <span class="text-[8px] font-bold uppercase" x-text="p.count"></span>
+                                </div>
                             </div>
-                            <div class="flex gap-2">
-                                <button @click="dismissSuggestion(s.id)" class="text-zinc-500 hover:text-zinc-300 font-bold text-xs uppercase">Dismiss</button>
-                                <button @click="createSuggestion(s)" class="text-blue-400 hover:text-blue-300 font-bold text-xs uppercase">Create</button>
-                            </div>
+                            <p class="text-[10px] font-bold text-center text-zinc-400 truncate w-16" x-text="p.display || 'User'"></p>
+                        </button>
+                    </template>
+                </div>
+            </section>
+
+            <!-- Semantic Search Bar -->
+            <section x-show="allPhotos.length > 0" class="mb-8">
+                <div class="relative">
+                    <i data-lucide="sparkles" class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500"></i>
+                    <input x-model="searchQuery" type="text" 
+                           @input.debounce.400ms="doSearch()"
+                           @keydown.escape="clearSearch()"
+                           placeholder="Search your photos... (e.g. beach, smiling, sunset)"
+                           class="w-full bg-zinc-900/80 border border-white/10 rounded-2xl py-4 pl-12 pr-12 text-white outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-zinc-600">
+                    <button x-show="searchQuery" @click="clearSearch()" class="absolute right-4 top-1/2 -translate-y-1/2 w-6 h-6 bg-zinc-700 rounded-full flex items-center justify-center">
+                        <i data-lucide="x" class="w-3 h-3 text-white"></i>
+                    </button>
+                </div>
+            </section>
+
+            <!-- Search Results -->
+            <section x-show="isSearchActive" class="mb-8">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-bold flex items-center gap-2">
+                        <i data-lucide="sparkles" class="w-5 h-5 text-blue-500"></i> 
+                        <span x-text="searchResults.length + ' results for &quot;' + searchQuery + '&quot;'"></span>
+                    </h2>
+                </div>
+                <div class="grid grid-cols-4 gap-2">
+                    <template x-for="(p, i) in searchResults" :key="'search-' + p.file_path">
+                        <div @click="openLightboxFromResults(i)" 
+                             :class="i === 0 && searchResults.length > 1 ? 'photo-hero col-span-2 row-span-2' : 'aspect-square rounded-xl'"
+                             class="overflow-hidden bento-card active:scale-95 transition-all relative border-2 border-transparent hover:border-blue-500/30">
+                            <img :src="'/images/' + p.file_path.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover">
+                            <div class="absolute bottom-1 right-1 px-1.5 py-0.5 bg-blue-500/80 rounded-md text-[9px] font-bold text-white" x-text="Math.round(p.score * 100) + '%'"></div>
                         </div>
-                        <div class="flex items-center gap-4">
-                            <div class="flex -space-x-3 overflow-hidden">
-                                <template x-for="p in s.photos.slice(0,3)">
-                                    <img :src="'/images/' + p.split('/').pop()" class="w-12 h-12 rounded-xl border-2 border-zinc-900 object-cover">
-                                </template>
-                            </div>
-                            <div>
-                                <p class="text-sm font-bold text-white" x-text="s.label"></p>
-                                <p class="text-xs text-zinc-500" x-text="s.photo_count + ' photos'"></p>
-                            </div>
-                        </div>
+                    </template>
+                </div>
+                <div x-show="searchResults.length === 0 && searchQuery" class="text-center py-12">
+                    <div class="text-4xl mb-3">🔍</div>
+                    <p class="text-zinc-500">No photos match your search. Try something else.</p>
+                </div>
+            </section>
+
+            <!-- Chronological Photo Grid -->
+            <section x-show="allPhotos.length > 0 && !isSearchActive">
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="text-lg font-bold flex items-center gap-2">
+                        <i data-lucide="image" class="w-5 h-5 text-purple-500"></i> 
+                        <span x-text="allPhotos.length + ' Photos'"></span>
+                    </h2>
+                    <div class="flex gap-2">
+                        <button x-show="!selectionMode" @click="selectionMode = true" class="text-xs font-bold text-blue-500 uppercase tracking-widest bg-blue-500/10 px-3 py-1.5 rounded-lg active:scale-95 transition-all">Select</button>
+                        <button x-show="selectionMode" @click="exitSelection()" class="text-xs font-bold text-zinc-500 uppercase tracking-widest bg-white/5 px-3 py-1.5 rounded-lg active:scale-95 transition-all">Cancel</button>
                     </div>
                 </div>
-            </template>
 
-            <!-- Timeline Day Groups -->
-            <template x-for="day in dayGroups" :key="'day-' + day.key">
-                <div class="mb-10">
-                    <div class="flex items-center gap-3 mb-4">
-                        <h3 class="text-xl font-black text-white" x-text="day.label"></h3>
-                        <div class="flex-1 h-px bg-zinc-800"></div>
-                        <span class="text-xs font-bold text-zinc-600" x-text="day.photos.length + ' photos'"></span>
-                    </div>
-                    <div class="grid grid-cols-4 gap-2">
-                        <template x-for="(p, idx) in day.photos" :key="p.file_path">
-                            <div @click="selectionMode ? toggleSelection(p.file_path) : openLightboxFromAll(p.file_path)"
-                                 class="aspect-square rounded-2xl overflow-hidden bento-card active:scale-95 transition-all relative border-2"
-                                 :class="selectedItems.includes(p.file_path) ? 'border-blue-500 scale-95' : 'border-transparent'">
-                                <img :src="'/images/' + p.file_path.split('/').pop()" 
-                                     class="w-full h-full object-cover"
-                                     @error="$el.style.display='none'; $el.parentElement.innerHTML='<div class=\'w-full h-full flex items-center justify-center bg-zinc-800\'>🧩</div>'">
-                                
-                                <!-- Face Overlays -->
-                                <template x-for="a in (p.assignments || [])">
-                                    <div class="absolute w-2 h-2 rounded-full border border-white shadow-lg pointer-events-none"
-                                         :style="`left: ${a.face_bbox[0]*100}%; top: ${a.face_bbox[1]*100}%;` + (a.face_bbox[2] > 0 ? `width:${a.face_bbox[2]*100}%; height:${a.face_bbox[3]*100}%` : '')"
-                                         :class="getPersonBg(a.person_id)"></div>
-                                </template>
+                <!-- Year Groups -->
+                <template x-for="yg in photoGroups" :key="'year-' + yg.year">
+                    <div class="mb-8">
+                        <h3 class="text-2xl font-black text-zinc-300 mb-4 flex items-center gap-3">
+                            <span x-text="yg.year || 'Unknown Date'"></span>
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-zinc-800 text-zinc-400 border border-zinc-700" x-text="yg.totalPhotos"></span>
+                            <div class="flex-1 h-px bg-zinc-800 ml-2"></div>
+                        </h3>
+                        <!-- Month Groups -->
+                        <template x-for="mg in yg.months" :key="'month-' + mg.label">
+                            <div class="mb-6">
+                            <h4 class="text-sm font-bold text-zinc-500 mb-3 uppercase tracking-wider flex items-center gap-2">
+                                <span x-text="mg.label"></span>
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-zinc-800/60 text-zinc-600" x-text="mg.photos.length"></span>
+                            </h4>
+                                <div class="grid grid-cols-4 gap-2">
+                                    <template x-for="(p, idx) in mg.photos" :key="p.file_path">
+                                        <div @click="selectionMode ? toggleSelection(p.file_path) : openLightboxFromAll(p.file_path)" 
+                                             :class="[p === mg.photos[0] && mg.photos.length > 1 ? 'photo-hero col-span-2 row-span-2' : 'aspect-square rounded-xl', 'overflow-hidden bento-card active:scale-95 transition-all relative border-2']"
+                                             :class="[selectedItems.includes(p.file_path) ? 'border-blue-500 scale-95' : 'border-transparent']">
+                                            <img :src="'/images/' + p.file_path.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover" @error="this.style.display='none'; this.parentElement.innerHTML='<div class=\'w-full h-full flex items-center justify-center bg-zinc-800\'><span class=\'text-zinc-600 text-lg\'>🧩</span></div>'">
+                                            <!-- Date badge on hover -->
+                                            <div class="absolute inset-0 bg-black/0 hover:bg-black/40 transition-colors flex items-end p-1.5 opacity-0 hover:opacity-100">
+                                                <span class="text-[9px] font-bold text-white" x-text="formatPhotoDate(p)"></span>
+                                            </div>
+                                            <!-- Processing overlay -->
+                                            <div x-show="p.processing_status !== 'done' && p.processing_status !== 'error'" 
+                                                 class="absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center p-2 text-center">
+                                                <i data-lucide="cpu" class="w-6 h-6 text-blue-400 animate-spin mb-2"></i>
+                                                <p class="text-[8px] font-black uppercase text-blue-400 tracking-widest" x-text="p.processing_status"></p>
+                                            </div>
+                                            <div x-show="selectionMode && selectedItems.includes(p.file_path)" class="absolute top-1.5 right-1.5 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center shadow-lg">
+                                                <i data-lucide="check" class="w-3.5 h-3.5 text-white"></i>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
                             </div>
                         </template>
                     </div>
-                </div>
-            </template>
-
-            <!-- No Date Photos -->
-            <template x-if="noDatePhotos.length > 0 && !activePersonFilter">
-                <div class="mt-12 bg-zinc-900/50 rounded-[32px] p-6 border border-white/5">
-                    <h3 class="text-lg font-black text-zinc-500 mb-4 flex items-center gap-2">
-                        <i data-lucide="help-circle" class="w-5 h-5 text-zinc-600"></i> No Date Data
-                    </h3>
-                    <div class="grid grid-cols-4 gap-2">
-                        <template x-for="p in noDatePhotos" :key="p.file_path">
-                            <div @click="openLightboxFromAll(p.file_path)" class="aspect-square rounded-xl overflow-hidden bg-zinc-800 border border-white/5 opacity-60">
-                                <img :src="'/images/' + p.file_path.split('/').pop()" class="w-full h-full object-cover">
-                            </div>
-                        </template>
-                    </div>
-                </div>
-            </template>
+                </template>
+            </section>
         </div>
 
-        
+        <!-- Tab: Memories -->
+        <div x-show="tab === 'memories'" x-cloak class="p-6 max-w-2xl mx-auto">
+            <div class="flex items-center justify-between mb-8 pt-4">
+                <h1 class="text-4xl font-black tracking-tight">Memories</h1>
+                <button @click="refreshInsights()" class="bg-white/5 p-3 rounded-2xl border border-white/5 active:scale-90 transition-all">
+                    <i data-lucide="refresh-cw" class="w-5 h-5 text-zinc-400"></i>
+                </button>
+            </div>
+
+            <!-- Memory Flashbacks -->
+            <template x-if="memoriesFlashback">
+                <div class="mb-8">
+                    <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                        <span>🕰️</span> On This Day
+                    </h2>
+                    <div class="bento-card p-5 rounded-3xl border border-white/10 bg-gradient-to-br from-purple-500/10 via-pink-500/5 to-orange-500/10">
+                        <div class="flex items-start gap-4 mb-4">
+                            <div class="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center text-2xl flex-shrink-0">📸</div>
+                            <div>
+                                <h3 class="font-bold text-white text-lg" x-text="memoriesFlashback.title"></h3>
+                                <p class="text-sm text-zinc-400 leading-relaxed mt-1" x-text="memoriesFlashback.message"></p>
+                            </div>
+                        </div>
+                        <!-- Photo grid for this memory -->
+                        <div class="grid grid-cols-4 gap-2 mt-4" x-show="memoriesFlashback.data && memoriesFlashback.data.photos">
+                            <template x-for="(fp, i) in (memoriesFlashback.data.photos || []).slice(0, 8)" :key="'mem-'+i">
+                                <div class="aspect-square rounded-xl overflow-hidden bg-zinc-800">
+                                    <img :src="'/images/' + fp.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover active:scale-90 transition-transform" @click="lbFromPhotos(memoriesFlashback.data.photos.map(p => ({file_path: p})), i); lbOpen = true">
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+            <!-- Seasonal Intelligence -->
+            <template x-if="seasonalCard">
+                <div class="mb-8">
+                    <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                        <span x-text="seasonalCard.icon"></span> <span x-text="seasonalCard.title"></span>
+                    </h2>
+                    <div class="bento-card p-5 rounded-3xl border border-white/10 bg-gradient-to-br from-blue-500/10 via-cyan-500/5 to-teal-500/10">
+                        <p class="text-sm text-zinc-400 leading-relaxed mb-4" x-text="seasonalCard.message"></p>
+                        <div class="grid grid-cols-4 gap-2" x-show="seasonalCard.data && seasonalCard.data.photos">
+                            <template x-for="(fp, i) in (seasonalCard.data.photos || []).slice(0, 8)" :key="'sea-'+i">
+                                <div class="aspect-square rounded-xl overflow-hidden bg-zinc-800">
+                                    <img :src="'/images/' + fp.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover active:scale-90 transition-transform" @click="lbFromPhotos(seasonalCard.data.photos.map(p => ({file_path: p})), i); lbOpen = true">
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+            <!-- Empty state -->
+            <div x-show="!memoriesFlashback && !seasonalCard" class="flex flex-col items-center justify-center py-20 text-center">
+                <div class="text-6xl mb-6">🌙</div>
+                <h3 class="text-xl font-bold text-zinc-300 mb-2">No Memories Yet</h3>
+                <p class="text-zinc-500 max-w-xs mx-auto">Upload more photos and come back — the AI will surface moments from your past and seasonal patterns.</p>
+            </div>
+        </div>
+
+        <!-- Tab: Moments -->
+        <div x-show="tab === 'moments'" x-cloak class="p-6 max-w-2xl mx-auto">
+            <div class="flex items-center justify-between mb-8 pt-4">
+                <h1 class="text-4xl font-black tracking-tight">Moments</h1>
+                <div class="flex gap-2">
+                    <button @click="confirmAction('Regenerate moments from scratch?', 'regenerateMoments')" class="bg-white/5 p-3 rounded-2xl border border-white/5 active:scale-90 transition-all">
+                        <i data-lucide="refresh-cw" class="w-5 h-5 text-zinc-400"></i>
+                    </button>
+                    <button @click="addMomentOpen = true" class="bg-blue-500 text-white p-3 rounded-2xl shadow-lg shadow-blue-500/20 active:scale-90 transition-all">
+                        <i data-lucide="plus" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Empty State for Moments -->
+            <template x-if="moments.length === 0">
+                <div class="flex flex-col items-center justify-center py-20 text-center">
+                    <div class="w-20 h-20 bg-zinc-900 rounded-full flex items-center justify-center mb-4 border border-white/5">
+                        <i data-lucide="layers" class="w-10 h-10 text-zinc-700"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-zinc-300">No AI Moments</h3>
+                    <p class="text-zinc-500 max-w-xs mx-auto mt-2">Upload more photos to let the engine group your memories into stories.</p>
+                </div>
+            </template>
+
+            <div class="grid grid-cols-1 gap-4">
+                <template x-for="m in moments" :key="m.id">
+                    <div class="bento-card rounded-3xl overflow-hidden relative group active:scale-[0.98] transition-all duration-300"
+                         @contextmenu.prevent="openMomentMenu(m, $event)">
+                        <div @click="openMomentGallery(m)" class="cursor-pointer">
+                            <div class="aspect-[16/9] w-full relative bg-zinc-900 border-b border-white/5">
+                                <template x-if="m.cover_image">
+                                    <img :src="'/images/' + m.cover_image.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover">
+                                </template>
+                                <template x-if="!m.cover_image">
+                                    <div class="w-full h-full flex items-center justify-center opacity-20">
+                                         <i data-lucide="layers" class="w-12 h-12"></i>
+                                    </div>
+                                </template>
+                                <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
+                                <div class="absolute bottom-4 left-5 right-5">
+                                    <h3 class="text-2xl font-bold text-white" x-text="m.label"></h3>
+                                    <p class="text-xs text-white/60 font-medium" x-text="m.count + ' photos • ' + (new Date(m.timestamp*1000).toLocaleDateString())"></p>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- UI Polish: Visible Trigger for Mobile -->
+                        <button @click.stop="openMomentMenu(m, $event)" class="absolute top-4 right-4 w-10 h-10 rounded-full bg-black/50 backdrop-blur-md flex items-center justify-center lg:opacity-0 group-hover:opacity-100 transition-opacity border border-white/10">
+                            <i data-lucide="more-vertical" class="w-5 h-5 text-white"></i>
+                        </button>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Tab: People -->
+        <div x-show="tab === 'people'" x-cloak class="p-6 max-w-2xl mx-auto">
+            <div class="mb-8 pt-4">
+                <h1 class="text-4xl font-black tracking-tight mb-4">People</h1>
+                <div class="relative">
+                    <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500"></i>
+                    <input x-model="searchQuery" type="text" placeholder="Search people..." class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
 
                 <div class="grid grid-cols-2 gap-3">
                     <template x-for="p in filteredPeople" :key="peopleVersion + '-' + p.id">
@@ -293,24 +435,19 @@
     <!-- Global Floating Tab Bar -->
     <nav class="fixed bottom-6 left-6 right-6 z-[55] bento-card px-2 py-3 rounded-[24px] border border-white/10 shadow-3xl">
         <div class="flex items-center justify-between gap-1">
-            <div class="flex-1 flex justify-around items-center">
-                <button @click="tab = 'timeline'" class="flex flex-col items-center gap-1 py-1.5 transition-all rounded-xl"
-                        :class="tab === 'timeline' ? 'text-blue-500 bg-blue-500/10' : 'text-zinc-500 hover:text-white'">
-                    <i data-lucide="calendar" class="w-5 h-5"></i>
-                    <span class="text-[9px] font-bold uppercase tracking-wider">Timeline</span>
+            <template x-for="t in ['discover', 'memories', 'moments', 'people']" :key="t">
+                <button @click="tab = t" class="flex-1 flex flex-col items-center gap-1 py-1.5 transition-all rounded-xl"
+                        :class="tab === t ? 'text-blue-500 bg-blue-500/10' : 'text-zinc-500 hover:text-white'">
+                    <i :data-lucide="t === 'discover' ? 'layout-grid' : (t === 'memories' ? 'sparkles' : (t === 'moments' ? 'layers' : 'users'))" class="w-5 h-5"></i>
+                    <span class="text-[9px] font-bold uppercase tracking-wider" x-text="t"></span>
                 </button>
-                
-                <label class="flex flex-col items-center gap-1 py-1.5 cursor-pointer text-zinc-500 hover:text-white">
-                    <input type="file" multiple accept="image/*" class="hidden" @change="doUpload($event.target.files)">
-                    <i data-lucide="plus-circle" class="w-6 h-6 text-blue-500"></i>
-                    <span class="text-[9px] font-bold uppercase tracking-wider">Add</span>
-                </label>
-
-                <button @click="peopleDrawer = true" class="flex flex-col items-center gap-1 py-1.5 transition-all rounded-xl text-zinc-500 hover:text-white">
-                    <i data-lucide="users" class="w-5 h-5"></i>
-                    <span class="text-[9px] font-bold uppercase tracking-wider">Who</span>
-                </button>
-            </div>
+            </template>
+            <div class="w-px h-8 bg-white/10 mx-1"></div>
+            <label class="flex-1 flex flex-col items-center gap-1 py-1.5 cursor-pointer text-zinc-500 hover:text-white">
+                <input type="file" multiple accept="image/*" class="hidden" @change="doUpload($event.target.files)">
+                <i data-lucide="plus-square" class="w-6 h-6 text-blue-500"></i>
+                <span class="text-[9px] font-bold uppercase tracking-wider">Add</span>
+            </label>
         </div>
     </nav>
 
@@ -651,7 +788,9 @@
     <script>
         function app() {
             return {
-                tab: 'timeline',
+                tab: 'discover',
+                memoriesFlashback: null,
+                seasonalCard: null,
                 loading: false,
                 allPhotos: [],
                 moments: [],
@@ -661,14 +800,6 @@
                 searchResults: [],
                 isSearchActive: false,
                 photoGroups: [],
-                dayGroups: [],
-                noDatePhotos: [],
-                suggestions: [],
-                activePersonFilter: null,
-                activePersonDisplay: "",
-                dismissedSuggestions: JSON.parse(localStorage.getItem("dismissed_suggestions") || "[]"),
-                personColors: {},
-                peopleDrawer: false,
                 filteredPeople: [],
                 peopleVersion: 0,
                 toast: { show: false, text: '', type: 'info' },
@@ -790,17 +921,19 @@
 
                 async refreshAll() {
                     try {
-                        const [pRes, mRes, pRegRes, iRes, sRes] = await Promise.all([
+                        const [pRes, mRes, pRegRes, iRes] = await Promise.all([
                             fetch('/api/photos'),
                             fetch('/api/moments'),
                             fetch('/api/people'),
-                            fetch('/api/insights'),
-                            fetch('/api/suggestions')
+                            fetch('/api/insights')
                         ]);
-                        this.allPhotos = await pRes.json() || []; this.groupPhotosByDay();
+                        this.allPhotos = await pRes.json() || []; this.groupPhotosByDate();
                         this.moments = (await mRes.json() || []).sort((a,b) => b.timestamp - a.timestamp);
-                        this.insights = await iRes.json() || [];
-                        this.suggestions = await sRes.json() || [];
+                        const insightsData = await iRes.json() || [];
+                        this.insights = insightsData;
+                        // Extract memory flashback and seasonal cards
+                        this.memoriesFlashback = insightsData.find(i => i.type === 'memory_flashback') || null;
+                        this.seasonalCard = insightsData.find(i => i.type === 'seasonal') || null;
                         const newPeople = await pRegRes.json() || [];
                         // Pre-compute avatarUrl for each person so Alpine gets a plain string
                         for (const p of newPeople) {
@@ -1068,6 +1201,8 @@
                         const res = await fetch('/api/insights');
                         const data = await res.json() || [];
                         this.insights = data;
+                        this.memoriesFlashback = data.find(i => i.type === 'memory_flashback') || null;
+                        this.seasonalCard = data.find(i => i.type === 'seasonal') || null;
                         this.flash('Memories updated');
                     } catch(e) { this.flash('Failed to refresh', 'error'); }
                     this.$nextTick(() => lucide.createIcons());
@@ -1331,91 +1466,48 @@
                     } catch { return ''; }
                 },
 
-                groupPhotosByDay() {
-                    const days = {};
-                    this.noDatePhotos = [];
-                    const pidNames = {};
+                groupPhotosByDate() {
+                    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                                       'July', 'August', 'September', 'October', 'November', 'December'];
+                    const years = {};
+                    const noDatePhotos = [];
+                    
                     for (const photo of this.allPhotos) {
+                        // Only use captured_at (EXIF) — never fall back to analyzed_at
                         const cap = photo.captured_at;
-                        if (!cap) { this.noDatePhotos.push(photo); continue; }
+                        if (!cap) {
+                            noDatePhotos.push(photo);
+                            continue;
+                        }
                         try {
                             const d = new Date(cap);
-                            const dayKey = cap.split('T')[0];
-                            const label = d.toLocaleDateString('de-DE', { day:'numeric', month:'long', year:'numeric' });
-                            if (!days[dayKey]) days[dayKey] = { key: dayKey, label, photos: [], people: new Set() };
-                            days[dayKey].photos.push(photo);
-                            for (const pid of (photo.person_ids || [])) {
-                                days[dayKey].people.add(pid);
-                                if (!pidNames[pid]) {
-                                    const p = this.people.find(x => x.id === pid);
-                                    pidNames[pid] = p ? p.display.replace('\u{1f914} ', '') : pid;
-                                }
-                            }
-                        } catch {}
+                            const year = d.getFullYear();
+                            const month = d.getMonth();
+                            
+                            if (!years[year]) years[year] = { year, months: {}, totalPhotos: 0 };
+                            if (!years[year].months[month]) years[year].months[month] = { label: monthNames[month], photos: [] };
+                            years[year].months[month].photos.push(photo);
+                            years[year].totalPhotos++;
+                        } catch { /* skip invalid dates */ }
                     }
-                    const sorted = Object.values(days).sort((a, b) => b.key.localeCompare(a.key));
-                    this.dayGroups = sorted.map(d => {
-                        const names = Array.from(d.people).slice(0,4).map(pid => pidNames[pid]||'?').join(', ');
-                        return { ...d, peopleNames: names };
-                    });
-                },
-
-                computeSuggestions() {
-                    const dismissed = this.dismissedSuggestions || [];
-                    const suggestions = [];
-                    const momentPaths = new Set((this.moments||[]).flatMap(m => m.member_paths||[]));
-                    for (const day of this.dayGroups) {
-                        if (day.photos.length < 3) continue;
-                        const paths = new Set(day.photos.map(p => p.file_path));
-                        if (paths.intersection(momentPaths).size > 0) continue;
-                        const id = 'suggest-' + day.key;
-                        if (dismissed.includes(id)) continue;
-                        suggestions.push({ id, label: day.label, photo_count: day.photos.length, people_count: day.people.size, photos: day.photos.slice(0,4).map(p => p.file_path) });
+                    
+                    // Sort years descending, months ascending within each year
+                    this.photoGroups = Object.values(years)
+                        .sort((a, b) => b.year - a.year)
+                        .map(yg => ({
+                            ...yg,
+                            months: Object.values(yg.months).sort((a, b) => monthNames.indexOf(a.label) - monthNames.indexOf(b.label))
+                        }));
+                    
+                    // Append no-date photos as a final "Unknown" group
+                    if (noDatePhotos.length > 0) {
+                        this.photoGroups.push({
+                            year: null,
+                            totalPhotos: noDatePhotos.length,
+                            months: [{ label: '📎 No Date', photos: noDatePhotos }]
+                        });
                     }
-                    this.suggestions = suggestions;
                 },
-
-                dismissSuggestion(id) {
-                    this.dismissedSuggestions = [...(this.dismissedSuggestions||[]), id];
-                    localStorage.setItem('dismissed_suggestions', JSON.stringify(this.dismissedSuggestions));
-                    this.suggestions = this.suggestions.filter(s => s.id !== id);
-                },
-
-                async createSuggestion(s) {
-                    await fetch('/api/moments/create', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({label:s.label, photo_paths:s.photos}) });
-                    this.dismissSuggestion(s.id);
-                    await this.refreshAll();
-                    this.flash('Moment created!');
-                },
-
-                filterByPerson(pid) {
-                    const person = this.people.find(p => p.id === pid);
-                    this.activePersonFilter = pid;
-                    this.activePersonDisplay = person ? person.display : pid;
-                    this.dayGroups = this.dayGroups.map(d => ({...d, photos: d.photos.filter(p => (p.person_ids||[]).includes(pid))}));
-                },
-
-                clearPersonFilter() {
-                    this.activePersonFilter = null;
-                    this.activePersonDisplay = '';
-                    this.groupPhotosByDay();
-                },
-
-                getPersonBg(pid) {
-                    const colors = ['rose','orange','amber','lime','emerald','cyan','blue','indigo','violet','pink'];
-                    let h = 0; for (let i=0; i<pid.length; i++) h = (h*31+pid.charCodeAt(i))&0xffffffff;
-                    return 'bg-' + colors[Math.abs(h)%colors.length] + '-500/30';
-                },
-
-                getBubbles(p) {
-                    return (p.assignments||[]).map(a => {
-                        const bbox = a.face_bbox||[0.5,0.5,0.2,0.2];
-                        const person = this.people.find(x => x.id === a.person_id);
-                        const name = person ? person.display.replace('\u{1f914} ', '') : '?';
-                        return { person_id: a.person_id, x: Math.max(0,(bbox[0]-bbox[2]/2)*100), y: Math.max(0,(bbox[1]-bbox[3]/2)*100), s: Math.min(30,Math.max(12,bbox[2]*100)), name, short: name.slice(0,3) };
-                    });
-                },
-
 
                 async lbSaveCaption() {
                     if (this.lbPhotos[this.lbIndex]?.is_group) return;
