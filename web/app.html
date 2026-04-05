@@ -945,6 +945,27 @@
                             }
                         }
                         this.people = newPeople;
+                        this.rawPeopleVersion++;
+
+                        // Merge unnamed people into one "Unidentified" group
+                        const named = this.people.filter(p => p.display && p.display !== 'Person' && p.display.trim() !== '');
+                        const unnamed = this.people.filter(p => !p.display || p.display === 'Person' || p.display.trim() === '');
+                        if (unnamed.length > 1) {
+                            // Group into single "Unidentified" entry with most frequent face as avatar
+                            unnamed.sort((a, b) => (b.face_count || 0) - (a.face_count || 0));
+                            const merged = {
+                                id: 'UNIDENTIFIED_GROUP',
+                                display: 'Unidentified',
+                                face_count: unnamed.reduce((s, p) => s + (p.face_count || 0), 0),
+                                person_count: unnamed.length,
+                                avatar: unnamed[0].avatar,
+                                avatarUrl: unnamed[0].avatarUrl,
+                                face_bbox: unnamed[0].face_bbox,
+                                is_group: true
+                            };
+                            named.push(merged);
+                        }
+                        this.people = named;
                         this.peopleVersion++;
 
                         // Sync active Moment Gallery state
@@ -1067,7 +1088,14 @@
                 // Person Gallery
                 openPerson(p) {
                     this.pgPerson = p;
-                    this.pgPhotos = this.allPhotos.filter(x => (x.person_ids || []).includes(p.id));
+                    if (p.is_group && p.member_ids) {
+                        // Show all photos of ANY member in the unidentified group
+                        this.pgPhotos = this.allPhotos.filter(x => 
+                            (x.person_ids || []).some(id => p.member_ids.includes(id))
+                        );
+                    } else {
+                        this.pgPhotos = this.allPhotos.filter(x => (x.person_ids || []).includes(p.id));
+                    }
                     this.pgOpen = true;
                 },
                 
@@ -1477,6 +1505,7 @@
                 },
 
                 async lbSaveCaption() {
+                    if (this.lbPhotos[this.lbIndex]?.is_group) return;
                     const photo = this.lbPhotos[this.lbIndex];
                     if (!photo) return;
                     await fetch('/api/photos/caption', {

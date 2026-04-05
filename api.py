@@ -324,20 +324,49 @@ async def get_people():
     registry = data.get("person_registry", {})
     catalog = data.get("image_catalog", [])
     person_counts = {}
+    # Track unnamed persons for merging
+    unnamed_pids = []
+    named_people = []
+    
     for photo in catalog:
         for asgn in photo.get("assignments", []):
             pid = asgn.get("person_id")
             if pid: person_counts[pid] = person_counts.get(pid, 0) + 1
     
-    people = []
     for pid, info in registry.items():
-        people.append({
-            "id": pid, 
-            "display": info.get("name", pid), 
-            "count": person_counts.get(pid, 0),
-            "premium_crop": f"/api/crop/premium/{pid}"
+        name = info.get("name")
+        if name and name.strip():
+            named_people.append({
+                "id": pid, 
+                "display": name, 
+                "count": person_counts.get(pid, 0),
+                "avatar": info.get("best_face_path"),
+                "face_bbox": info.get("best_face_bbox"),
+                "premium_crop": f"/api/crop/premium/{pid}"
+            })
+        else:
+            unnamed_pids.append(pid)
+    
+    # Merge all unnamed persons into single "Unidentified" group
+    if unnamed_pids:
+        total_unnamed = sum(person_counts.get(pid, 0) for pid in unnamed_pids) if unnamed_pids else 0
+        # Use first unnamed person's face as avatar
+        first_unnamed = unnamed_pids[0] if unnamed_pids else None
+        first_info = registry.get(first_unnamed, {}) if first_unnamed else {}
+        named_people.append({
+            "id": "UNIDENTIFIED",
+            "display": "🤔 Unidentified",
+            "count": total_unnamed,
+            "avatar": first_info.get("best_face_path"),
+            "face_bbox": first_info.get("best_face_bbox"),
+            "is_group": True,
+            "member_ids": unnamed_pids,
+            "premium_crop": None
         })
-    return people
+    
+    # Sort: named first (by count desc), then Unidentified at end always
+    named_people.sort(key=lambda x: (x.get("is_group", False), -x["count"]))
+    return named_people
 
 @app.get("/api/upload/active-jobs")
 async def get_active_jobs():
