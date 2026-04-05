@@ -58,23 +58,20 @@ class MemoriesSync:
     @staticmethod
     def _extract_exif_date(file_path: str) -> str | None:
         """Read original capture date from EXIF metadata."""
+        import re
         try:
-            from PIL import Image
-            from PIL.ExifTags import TAGS
-            exif_tags = {
-                0x9003,  # DateTimeOriginal
-                0x9004,  # DateTimeDigitized
-                0x0132,  # DateTime
-            }
             img = Image.open(file_path)
             exif = img.getexif()
+            exif_tags = (0x9003, 0x9004, 0x0132)  # DateTimeOriginal, DateTimeDigitized, DateTime
             for tag_id in exif_tags:
                 val = exif.get(tag_id)
                 if val and isinstance(val, str) and val.strip() not in ('', '0000:00:00 00:00:00'):
-                    # Convert "2024:03:30 19:27:57" -> "2024-03-30T19:27:57"
-                    cleaned = val.strip().replace(':', '-', 2)
-                    cleaned = cleaned.replace(' ', 'T', 1)
-                    return cleaned
+                    # EXIF format: "2024:03:30 19:27:57" — replace ALL colons with dashes then fix time
+                    cleaned = val.strip().replace(':', '-')
+                    # Now: "2024-03-30 19-27-57" — fix back to "2024-03-30T19:27:57"
+                    match = re.match(r'(\d{4}-\d{2}-\d{2})\s+(\d{2})-(\d{2})-(\d{2})', cleaned)
+                    if match:
+                        return f"{match.group(1)}T{match.group(2)}:{match.group(3)}:{match.group(4)}"
         except Exception as e:
             print(f"[EXIF] Failed to read date for {file_path}: {e}")
         return None

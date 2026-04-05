@@ -111,7 +111,21 @@ async def upload_worker():
 
 @app.on_event("startup")
 async def startup_event():
+    # Load persisted CLIP embeddings
+    try:
+        clip_engine.load_embeddings(CLIP_PATH)
+    except Exception as e:
+        print(f"[CLIP] Could not load embeddings: {e}")
     asyncio.create_task(upload_worker())
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    # Persist CLIP embeddings before exit
+    try:
+        if clip_engine._dirty:
+            clip_engine.save_embeddings(CLIP_PATH)
+    except Exception as e:
+        print(f"[CLIP] Could not save embeddings: {e}")
 
 @app.get("/api/crop/premium/{person_id}")
 async def get_premium_crop(person_id: str):
@@ -195,13 +209,23 @@ async def get_premium_crop(person_id: str):
         print(f"[Premium Crop Error] {e}")
         raise HTTPException(status_code=500, detail="Premium crop generation failed")
 
-def _refresh_insights():
+_INSIGHTS_CACHE = {"data": [], "timestamp": 0}
+
+def _refresh_insights(force=False):
+    import time
+    now = time.time()
+    if not force and _INSIGHTS_CACHE["data"] and now - _INSIGHTS_CACHE["timestamp"] < 300:
+        return _INSIGHTS_CACHE["data"]
     try:
         data = insight.generate_insights()
         with open(INSIGHTS_PATH, 'w') as f:
             json.dump(data, f, indent=2)
+        _INSIGHTS_CACHE["data"] = data
+        _INSIGHTS_CACHE["timestamp"] = now
+        return data
     except Exception as e:
         print(f"[ERROR] Insight generation failed: {e}")
+        return _INSIGHTS_CACHE.get("data", [])
 
 def _refresh_moments():
     catalog = [{"file_path": i.file_path, "analyzed_at": i.analyzed_at} for i in syncer.index.image_catalog]
@@ -226,6 +250,8 @@ async def _bg_process_photo(file_path: str, job_id: str, context_type: str = Non
         clip_engine.ensure_embedding(file_path)
         UPLOAD_JOBS[job_id]["status"] = "done"
         syncer._save_index()
+        if clip_engine._dirty:
+            clip_engine.save_embeddings(CLIP_PATH)
         _refresh_insights()
         _refresh_moments()
         _save_jobs()
@@ -237,7 +263,12 @@ async def _bg_process_photo(file_path: str, job_id: str, context_type: str = Non
 @app.post("/api/upload")
 async def upload_photo(file: UploadFile = File(...), context_type: Optional[str] = Query(None), context_id: Optional[str] = Query(None)):
     job_id = str(uuid.uuid4())
-    file_path = os.path.join(INPUT_DIR, file.filename)
+    safe_name = "".join(c for c in file.filename if c.isalnum() or c in ('.', '-', '_'))
+    if not safe_name:
+        safe_name = f"upload_{uuid.uuid4().hex[:8]}.jpg"
+    file_path = os.path.abspath(os.path.join(INPUT_DIR, safe_name))
+    if not file_path.startswith(os.path.abspath(INPUT_DIR)):
+        raise HTTPException(status_code=400, detail="Invalid filename")
     with open(file_path, "wb") as f: shutil.copyfileobj(file.file, f)
     UPLOAD_JOBS[job_id] = {"job_id": job_id, "file": file.filename, "status": "queued", "created_at": time.time()}
     _save_jobs()
@@ -418,7 +449,9 @@ async def caption_photo(req: PhotoCaptionRequest):
 async def move_photo(req: PhotoMoveRequest):
     """Move a photo file to another folder."""
     src = req.file_path
-    target_dir = os.path.join(INPUT_DIR, req.target_folder)
+    target_dir = os.path.abspath(os.path.join(INPUT_DIR, req.target_folder))
+    if not target_dir.startswith(os.path.abspath(INPUT_DIR)):
+        raise HTTPException(status_code=400, detail="Invalid target path")
     if not os.path.exists(src):
         raise HTTPException(status_code=404, detail="Source file not found")
     os.makedirs(target_dir, exist_ok=True)
