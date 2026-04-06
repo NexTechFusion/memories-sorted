@@ -6,1588 +6,482 @@
     <title>Memories AI</title>
     <script src="https://cdn.tailwindcss.com?_v=2"></script>
     <script src="https://unpkg.com/alpinejs@3.x.x" defer></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         [x-cloak] { display: none !important; }
-        .scrollbar-none::-webkit-scrollbar { display: none; }
-        .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
-        @keyframes toastUp { from { transform: translate(-50%, 20px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
-        .toast-anim { animation: toastUp .3s ease-out; }
-        .bento-card { background: rgba(24, 24, 27, 0.4); border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(12px); }
-        .photo-hero { grid-column: span 2; grid-row: span 2; }
+        ::-webkit-scrollbar { display: none; }
+        .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 20px); }
+        .hero-card { grid-column: span 2; grid-row: span 2; aspect-ratio: 1/1; }
+        .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+        @keyframes slide-up { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .animate-slide-up { animation: slide-up 0.3s ease-out forwards; }
     </style>
 </head>
-<body x-data="app()" x-init="init()" class="bg-[#09090b] text-white font-sans antialiased overflow-x-hidden">
+<body class="bg-black text-white selection:bg-blue-500/30 font-sans" x-data="memories()" x-init="init()">
 
-    <!-- Onboarding Flow -->
-    <div x-show="showOnboarding" x-cloak class="fixed inset-0 z-[500] bg-black/90 backdrop-blur-2xl flex items-center justify-center p-6 text-center">
-        <div class="max-w-sm w-full animate-in zoom-in-95 duration-300">
-            <template x-if="onboardingStep === 1">
-                <div>
-                    <div class="w-24 h-24 bg-blue-500/20 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-blue-500/20">
-                        <i data-lucide="sparkles" class="w-12 h-12 text-blue-400"></i>
-                    </div>
-                    <h2 class="text-3xl font-black mb-4">Welcome to Zaiya</h2>
-                    <p class="text-zinc-400 leading-relaxed mb-10">Your memories, understood and organized by local AI. Privacy first, always.</p>
-                    <button @click="onboardingStep = 2" class="w-full py-4 bg-blue-500 text-white font-bold rounded-2xl shadow-xl shadow-blue-500/20 active:scale-95 transition-all">Next</button>
-                </div>
-            </template>
-            <template x-if="onboardingStep === 2">
-                <div>
-                    <div class="w-24 h-24 bg-purple-500/20 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-purple-500/20">
-                        <i data-lucide="brain-circuit" class="w-12 h-12 text-purple-400"></i>
-                    </div>
-                    <h2 class="text-3xl font-black mb-4">AI Magic</h2>
-                    <p class="text-zinc-400 leading-relaxed mb-10">Zaiya scans your photos to recognize faces, generate captions, and group moments automatically.</p>
-                    <button @click="onboardingStep = 3" class="w-full py-4 bg-purple-500 text-white font-bold rounded-2xl shadow-xl shadow-purple-500/20 active:scale-95 transition-all">Tell me more</button>
-                </div>
-            </template>
-            <template x-if="onboardingStep === 3">
-                <div>
-                    <div class="w-24 h-24 bg-green-500/20 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-green-500/20">
-                        <i data-lucide="shield-check" class="w-12 h-12 text-green-400"></i>
-                    </div>
-                    <h2 class="text-3xl font-black mb-4">Local & Private</h2>
-                    <p class="text-zinc-400 leading-relaxed mb-10">No cloud. No tracking. Everything stays on your machine. Your data is yours.</p>
-                    <button @click="completeOnboarding()" class="w-full py-4 bg-green-500 text-white font-bold rounded-2xl shadow-xl shadow-green-500/20 active:scale-95 transition-all">Get Started</button>
-                </div>
-            </template>
-        </div>
-    </div>
+    <!-- App Container -->
+    <div class="min-h-screen flex flex-col max-w-2xl mx-auto border-x border-white/5 relative bg-zinc-950 pb-24">
 
-    
-    <!-- People Drawer -->
-    <div x-show="peopleDrawer" x-cloak class="fixed inset-0 z-[80]" style="display:none">
-        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="peopleDrawer = false"></div>
-        <div class="absolute right-0 top-0 bottom-0 w-[280px] bg-zinc-900/95 backdrop-blur-md border-l border-white/10 p-6 overflow-y-auto"
-             x-show="peopleDrawer" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0"
-             x-transition:leave="transition ease-in duration-150" x-transition:leave-start="translate-x-0" x-transition:leave-end="translate-x-full">
-            <div class="flex items-center justify-between mb-6">
-                <h2 class="text-xl font-black text-white">People</h2>
-                <button @click="peopleDrawer = false" class="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-zinc-400 hover:text-white">✕</button>
-            </div>
-            <div class="space-y-2">
-                <template x-for="p in people" :key="p.id">
-                    <div @click="peopleDrawer = false; filterByPerson(p.id)" 
-                         class="flex items-center gap-3 p-3 rounded-2xl cursor-pointer border border-transparent hover:border-white/10 transition-all"
-                         :class="activePersonFilter === p.id ? 'border-blue-500/20 bg-blue-500/10' : ''">
-                        <div class="w-10 h-10 rounded-full overflow-hidden bg-zinc-800 flex-shrink-0">
-                            <img :src="getLiftedUrl(p.id)" class="w-full h-full object-cover" @error="$el.style.display='none'">
-                        </div>
-                        <div class="flex-1 min-w-0">
-                            <span class="text-sm font-bold text-white truncate block" x-text="p.display"></span>
-                            <span class="text-[10px] text-zinc-500 font-bold uppercase tracking-wider" x-text="p.count + ' photos'"></span>
-                        </div>
-                    </div>
-                </template>
-                <template x-if="activePersonFilter">
-                    <div class="mt-4 pt-4 border-t border-white/5">
-                        <button @click="clearPersonFilter(); peopleDrawer = false" class="w-full py-3 rounded-2xl border border-zinc-700 text-sm font-bold text-zinc-400 hover:text-white hover:border-zinc-600 transition-all">
-                            Clear Filter
-                        </button>
-                    </div>
-                </template>
-            </div>
-        </div>
-    </div>
-<!-- Toast Component -->
-    <div x-show="toast.show" x-transition.duration.300ms 
-         class="fixed top-16 left-1/2 -translate-x-1/2 z-[9999] px-6 py-3 rounded-full text-sm font-semibold toast-anim shadow-2xl border border-white/10"
-         :class="toast.type==='error'?'bg-red-500/90':'bg-zinc-800/90'" x-text="toast.text"></div>
-
-    <!-- Upload Progress Bento -->
-    <div x-show="uploading" x-cloak x-transition.opacity class="fixed bottom-24 left-4 right-4 z-[90]">
-        <div class="bento-card rounded-2xl p-4 shadow-2xl flex items-center gap-4 border-blue-500/20">
-            <div class="w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center relative overflow-hidden">
-                <template x-if="uploadPreview">
-                    <img :src="uploadPreview" class="absolute inset-0 w-full h-full object-cover rounded-full opacity-50">
-                </template>
-                <i data-lucide="upload-cloud" class="w-5 h-5 text-blue-400 animate-pulse relative z-10" x-show="uploadStatus === 'uploading'"></i>
-                <i data-lucide="cpu" class="w-5 h-5 text-purple-400 animate-spin relative z-10" x-show="uploadStatus !== 'uploading' && uploadStatus !== 'done' && uploadStatus !== 'error'"></i>
-                <i data-lucide="check" class="w-5 h-5 text-green-400 relative z-10" x-show="uploadStatus === 'done'"></i>
-                <i data-lucide="alert-circle" class="w-5 h-5 text-red-400 relative z-10" x-show="uploadStatus === 'error'"></i>
-            </div>
-            <div class="flex-1">
-                <div class="flex justify-between items-center mb-1">
-                    <p class="text-[10px] text-zinc-500 uppercase tracking-widest font-bold" 
-                       x-text="getProcessLabel()"></p>
-                    <p class="text-[10px] font-bold text-zinc-400" x-show="uploadStatus === 'uploading'" x-text="uploadProgress + '%'"></p>
-                </div>
-                <div class="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
-                    <div class="bg-blue-500 h-full transition-all duration-300" 
-                         :class="uploadStatus !== 'uploading' ? 'bg-purple-500 animate-pulse' : ''"
-                         :style="'width:' + (uploadStatus === 'uploading' ? uploadProgress : 100) + '%'"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Main Navigation Content -->
-    <main class="pb-32 min-h-screen">
-        
-        <!-- Tab: Timeline -->
-        <div x-show="tab === 'timeline'" x-cloak class="p-6 max-w-2xl mx-auto">
-            <header class="mb-8 pt-4">
-                <h1 class="text-4xl font-black tracking-tight mb-2">Timeline</h1>
-                <p class="text-zinc-500 font-medium">Your life, in order.</p>
-            </header>
-
-            <!-- Filter Banner -->
-            <div x-show="activePersonFilter" class="mb-4">
-                <div class="flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 rounded-2xl px-4 py-2">
-                    <span class="text-sm text-blue-400 font-bold" x-text="'Showing: ' + (activePersonDisplay || 'Person')"></span>
-                    <button @click="clearPersonFilter()" class="ml-auto text-blue-400 hover:text-blue-300 text-sm font-bold">✕ Clear</button>
+        <!-- Top Navigation / Search Header -->
+        <header class="sticky top-0 z-40 bg-zinc-950/80 backdrop-blur-xl border-b border-white/5 px-4 pt-4 mb-2">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-xl font-bold tracking-tight bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">Memories</span>
+                <div class="flex items-center gap-3">
+                    <button @click="toggleSelectMode()" x-show="!selectMode" class="text-xs font-semibold px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 transition-all border border-white/5">Select</button>
+                    <button @click="cancelSelect()" x-show="selectMode" class="text-xs font-semibold px-3 py-1.5 rounded-full bg-red-500/10 text-red-500 border border-red-500/20">Cancel</button>
+                    <button @click="showNav = true" class="p-2 rounded-full bg-white/5"><svg class="w-5 h-5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg></button>
                 </div>
             </div>
 
-            <!-- AI Insights -->
-            <div x-show="insights.length > 0 && !activePersonFilter" class="flex gap-4 overflow-x-auto pb-8 -mx-6 px-6 scrollbar-none">
-                <template x-for="insight in insights" :key="insight.type">
-                    <div class="bento-card p-5 rounded-3xl min-w-[300px] max-w-[300px] flex flex-col justify-between transition-all hover:border-blue-500/20">
-                        <div>
-                            <div class="flex items-center gap-3 mb-4">
-                                <div class="w-12 h-12 rounded-2xl bg-blue-500/10 flex items-center justify-center text-xl overflow-hidden shadow-inner ring-1 ring-white/5">
-                                    <template x-if="insight.action && insight.action.type === 'person'">
-                                        <img :src="getLiftedUrl(insight.action.id)" class="w-full h-full object-contain drop-shadow-xl scale-110">
-                                    </template>
-                                    <template x-if="!insight.action || insight.action.type !== 'person'">
-                                        <span x-text="insight.icon"></span>
-                                    </template>
+            <!-- Search Bar (Phase 0.2) -->
+            <div class="relative group mb-4">
+                <input 
+                    type="text" 
+                    x-model="searchQuery" 
+                    @input.debounce.400ms="searchPhotos()"
+                    placeholder="Search memories... (e.g. 'Baby im Garten')"
+                    class="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-11 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all group-hover:bg-white/10"
+                >
+                <div class="absolute left-4 top-1/2 -translate-y-1/2 opacity-40">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main View Router -->
+        <main class="flex-grow">
+            
+            <!-- Timeline View (Default) -->
+            <div x-show="view === 'timeline'">
+                <!-- Empty State (Phase 0.4) -->
+                <div x-show="allPhotos.length === 0" class="flex flex-col items-center justify-center py-20 px-8 text-center" x-cloak>
+                    <div class="w-20 h-20 bg-white/5 rounded-3xl flex items-center justify-center mb-6">
+                        <svg class="w-10 h-10 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                    </div>
+                    <h3 class="text-xl font-bold mb-2">No Memories Yet</h3>
+                    <p class="text-sm text-white/50 mb-8 max-w-sm">Connect your sources or upload photos to see your intelligence-sorted timeline.</p>
+                    <button @click="view = 'add'" class="px-6 py-3 bg-blue-600 hover:bg-blue-500 font-bold rounded-2xl transition-all shadow-lg shadow-blue-600/20 active:scale-95">Add First Photos</button>
+                </div>
+
+                <!-- Discovery Section: People Carousel (Phase 0.3) -->
+                <section x-show="!searchQuery && filteredPeople.length > 0" class="mb-8" x-transition>
+                    <div class="px-4 flex items-center justify-between mb-4">
+                        <h2 class="text-xs font-bold uppercase tracking-widest text-white/40">Your People</h2>
+                        <button @click="view = 'people'" class="text-xs text-blue-500 font-semibold">See All</button>
+                    </div>
+                    <div class="flex overflow-x-auto gap-4 px-4 pb-2 hide-scroll snap-x">
+                        <template x-for="person in filteredPeople.slice(0, 10)" :key="person.id">
+                            <div @click="filterByPerson(person.id)" class="flex-none w-24 flex flex-col items-center gap-2 cursor-pointer group snap-center">
+                                <div class="w-20 h-20 rounded-2xl overflow-hidden bg-white/5 border border-white/10 group-active:scale-95 transition-all">
+                                    <img :src="'/crop/' + person.id" class="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500" @error="$el.style.display='none'">
                                 </div>
-                                <h3 class="font-bold text-white tracking-tight" x-text="insight.title"></h3>
-                            </div>
-                            <p class="text-sm text-zinc-400 leading-relaxed whitespace-pre-line" x-html="renderInsightMessage(insight.message)"></p>
-                        </div>
-                    </div>
-                </template>
-            </div>
-
-            <!-- Suggestions -->
-            <template x-for="s in suggestions" :key="'SUGGEST-'+s.id">
-                <div class="mb-6">
-                    <div class="bento-card p-4 rounded-3xl border border-amber-500/10 bg-gradient-to-br from-amber-500/5 to-orange-500/5">
-                        <div class="flex items-center justify-between mb-3">
-                            <div class="flex items-center gap-2">
-                                <span class="text-lg">💡</span>
-                                <h4 class="font-bold text-amber-300 text-sm">Suggested Moment</h4>
-                            </div>
-                            <div class="flex gap-2">
-                                <button @click="dismissSuggestion(s.id)" class="text-zinc-500 hover:text-zinc-300 font-bold text-xs uppercase">Dismiss</button>
-                                <button @click="createSuggestion(s)" class="text-blue-400 hover:text-blue-300 font-bold text-xs uppercase">Create</button>
-                            </div>
-                        </div>
-                        <div class="flex items-center gap-4">
-                            <div class="flex -space-x-3 overflow-hidden">
-                                <template x-for="p in s.photos.slice(0,3)">
-                                    <img :src="'/images/' + p.split('/').pop()" class="w-12 h-12 rounded-xl border-2 border-zinc-900 object-cover">
-                                </template>
-                            </div>
-                            <div>
-                                <p class="text-sm font-bold text-white" x-text="s.label"></p>
-                                <p class="text-xs text-zinc-500" x-text="s.photo_count + ' photos'"></p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </template>
-
-            <!-- Timeline Day Groups -->
-            <template x-for="day in dayGroups" :key="'day-' + day.key">
-                <div class="mb-10">
-                    <div class="flex items-center gap-3 mb-4">
-                        <h3 class="text-xl font-black text-white" x-text="day.label"></h3>
-                        <div class="flex-1 h-px bg-zinc-800"></div>
-                        <span class="text-xs font-bold text-zinc-600" x-text="day.photos.length + ' photos'"></span>
-                    </div>
-                    <div class="grid grid-cols-4 gap-2">
-                        <template x-for="(p, idx) in day.photos" :key="p.file_path">
-                            <div @click="selectionMode ? toggleSelection(p.file_path) : openLightboxFromAll(p.file_path)"
-                                 class="aspect-square rounded-2xl overflow-hidden bento-card active:scale-95 transition-all relative border-2"
-                                 :class="selectedItems.includes(p.file_path) ? 'border-blue-500 scale-95' : 'border-transparent'">
-                                <img :src="'/images/' + p.file_path.split('/').pop()" 
-                                     class="w-full h-full object-cover"
-                                     @error="$el.style.display='none'; $el.parentElement.innerHTML='<div class=\'w-full h-full flex items-center justify-center bg-zinc-800\'>🧩</div>'">
-                                
-                                <!-- Face Overlays -->
-                                <template x-for="a in (p.assignments || [])">
-                                    <div class="absolute w-2 h-2 rounded-full border border-white shadow-lg pointer-events-none"
-                                         :style="`left: ${a.face_bbox[0]*100}%; top: ${a.face_bbox[1]*100}%;` + (a.face_bbox[2] > 0 ? `width:${a.face_bbox[2]*100}%; height:${a.face_bbox[3]*100}%` : '')"
-                                         :class="getPersonBg(a.person_id)"></div>
-                                </template>
+                                <span class="text-[10px] font-bold truncate w-full text-center text-white/60 group-hover:text-white" x-text="person.name || 'Unknown'"></span>
                             </div>
                         </template>
                     </div>
-                </div>
-            </template>
+                </section>
 
-            <!-- No Date Photos -->
-            <template x-if="noDatePhotos.length > 0 && !activePersonFilter">
-                <div class="mt-12 bg-zinc-900/50 rounded-[32px] p-6 border border-white/5">
-                    <h3 class="text-lg font-black text-zinc-500 mb-4 flex items-center gap-2">
-                        <i data-lucide="help-circle" class="w-5 h-5 text-zinc-600"></i> No Date Data
-                    </h3>
-                    <div class="grid grid-cols-4 gap-2">
-                        <template x-for="p in noDatePhotos" :key="p.file_path">
-                            <div @click="openLightboxFromAll(p.file_path)" class="aspect-square rounded-xl overflow-hidden bg-zinc-800 border border-white/5 opacity-60">
-                                <img :src="'/images/' + p.file_path.split('/').pop()" class="w-full h-full object-cover">
+                <!-- AI Suggestions / Moments (Intelligence) -->
+                <section x-show="!searchQuery && suggestions.length > 0" class="mb-10 px-4">
+                    <div class="flex items-center gap-2 mb-4">
+                        <div class="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
+                        <h2 class="text-xs font-bold uppercase tracking-widest bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">Suggested Moments</h2>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <template x-for="insight in suggestions.slice(0, 2)" :key="insight.id">
+                            <div class="relative aspect-video rounded-3xl overflow-hidden group cursor-pointer border border-white/5">
+                                <img :src="'/image/' + insight.action.id" class="w-full h-full object-cover opacity-80 group-hover:scale-110 transition-all duration-1000">
+                                <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-end p-4">
+                                    <span class="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-1" x-text="insight.type === 'day' ? 'Memory' : 'Event'"></span>
+                                    <p class="text-xs font-bold" x-text="insight.title"></p>
+                                </div>
                             </div>
                         </template>
                     </div>
-                </div>
-            </template>
-        </div>
+                </section>
 
-        
-
-                <div class="grid grid-cols-2 gap-3">
-                    <template x-for="p in filteredPeople" :key="peopleVersion + '-' + p.id">
-                    <div @click="selectionMode ? toggleSelection(p.avatar) : openPerson(p)" 
-                         @contextmenu.prevent="openPersonMenu(p, $event)"
-                         class="bento-card p-3 rounded-[24px] flex flex-col items-center text-center relative group cursor-pointer border-2 transition-all duration-300"
-                         :class="selectedItems.includes(p.avatar) ? 'border-blue-500 scale-95' : 'border-transparent'">
-                        <div class="w-full aspect-square rounded-[20px] overflow-hidden mb-3 relative bg-zinc-800">
-                            <!-- Background Fallback -->
-                            <img :src="getAvatarSrc(p)"
-                                 :style="getPersonStyle(p)"
-                                 class="w-full h-full object-cover opacity-20 blur-[2px]">
-                            <!-- Floating Premium Portrait -->
-                            <div class="absolute inset-0 flex items-center justify-center p-2">
-                                <img :src="getLiftedUrl(p.id)" 
-                                     @error="$el.style.display='none'"
-                                     class="w-full h-full object-contain drop-shadow-[0_8px_8px_rgba(0,0,0,0.4)] transition-transform duration-500 group-hover:scale-110">
+                <!-- Timeline Photos Grid -->
+                <section class="mt-4">
+                    <template x-for="group in groupedTimeline" :key="group.date">
+                        <div class="mb-12">
+                            <div class="px-4 py-2 sticky top-[136px] z-30 bg-zinc-950/80 backdrop-blur-xl flex items-center justify-between pointer-events-none">
+                                <div class="flex items-baseline gap-2">
+                                    <h3 class="text-sm font-bold text-white/90" x-text="formatGroupDate(group.date)"></h3>
+                                    <span class="text-[10px] font-bold text-white/20 uppercase tracking-widest" x-text="group.photos.length + ' Items'"></span>
+                                </div>
                             </div>
-                        </div>
-                        <h4 class="text-sm font-bold text-white mb-0.5 truncate w-full" x-text="p.display || 'Person'"></h4>
-                        <p class="text-[10px] font-bold text-zinc-500 uppercase tracking-widest" x-text="p.count + ' Photos'"></p>
-                        
-                        <!-- UI Polish: Visible Trigger for Mobile -->
-                        <button x-show="!selectionMode" @click.stop="openPersonMenu(p, $event)" class="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center lg:opacity-0 group-hover:opacity-100 transition-opacity border border-white/10">
-                            <i data-lucide="more-vertical" class="w-4 h-4 text-white"></i>
-                        </button>
-                    </div>
-                </template>
-            </div>
-        </div>
 
-    </main>
-
-    <!-- Bulk Actions Toolbar -->
-    <div x-show="selectionMode" x-cloak
-         x-transition:enter="transition ease-out duration-300"
-         x-transition:enter-start="translate-y-20 opacity-0"
-         x-transition:enter-end="translate-y-0 opacity-100"
-         class="fixed bottom-28 left-6 right-6 z-[120]">
-        <div class="bg-blue-600 p-4 rounded-3xl shadow-2xl flex items-center justify-between gap-4">
-            <p class="text-sm font-black text-white pl-2" x-text="selectedItems.length + ' Selected'"></p>
-            <div class="flex gap-2">
-                <button @click="lbMoveShow = true" class="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center active:scale-90 transition-all">
-                    <i data-lucide="folder-plus" class="w-5 h-5 text-white"></i>
-                </button>
-                <button @click="confirmAction('Delete ' + selectedItems.length + ' photos permanently?', 'bulkDelete')" class="w-12 h-12 bg-red-500 rounded-2xl flex items-center justify-center active:scale-90 transition-all">
-                    <i data-lucide="trash-2" class="w-5 h-5 text-white"></i>
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Global Floating Tab Bar -->
-    <nav class="fixed bottom-6 left-6 right-6 z-[55] bento-card px-2 py-3 rounded-[24px] border border-white/10 shadow-3xl">
-        <div class="flex items-center justify-between gap-1">
-            <div class="flex-1 flex justify-around items-center">
-                <button @click="tab = 'timeline'" class="flex flex-col items-center gap-1 py-1.5 transition-all rounded-xl"
-                        :class="tab === 'timeline' ? 'text-blue-500 bg-blue-500/10' : 'text-zinc-500 hover:text-white'">
-                    <i data-lucide="calendar" class="w-5 h-5"></i>
-                    <span class="text-[9px] font-bold uppercase tracking-wider">Timeline</span>
-                </button>
-                
-                <label class="flex flex-col items-center gap-1 py-1.5 cursor-pointer text-zinc-500 hover:text-white">
-                    <input type="file" multiple accept="image/*" class="hidden" @change="doUpload($event.target.files)">
-                    <i data-lucide="plus-circle" class="w-6 h-6 text-blue-500"></i>
-                    <span class="text-[9px] font-bold uppercase tracking-wider">Add</span>
-                </label>
-
-                <button @click="peopleDrawer = true" class="flex flex-col items-center gap-1 py-1.5 transition-all rounded-xl text-zinc-500 hover:text-white">
-                    <i data-lucide="users" class="w-5 h-5"></i>
-                    <span class="text-[9px] font-bold uppercase tracking-wider">Who</span>
-                </button>
-            </div>
-        </div>
-    </nav>
-
-    <!-- Lightbox -->
-    <!-- Modal: Full-Screen Lightbox with Swipe Nav + Swipe-Up Info -->
-        <div x-show="lbOpen" x-cloak class="fixed inset-0 z-[70] bg-black flex flex-col animate-in fade-in duration-300" style="display:none">
-            <!-- Top Bar -->
-            <div class="absolute top-0 inset-x-0 p-4 flex justify-between items-center z-10 bg-gradient-to-b from-black/80 to-transparent">
-                <button @click.stop="lbOpen = false" class="w-12 h-12 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center active:scale-90 transition-transform">
-                    <i data-lucide="chevron-left" class="w-6 h-6 text-white"></i>
-                </button>
-                <div class="flex gap-2">
-                    <button @click.stop="openMoveModal()" class="w-12 h-12 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center active:scale-90 transition-transform">
-                        <i data-lucide="folder-plus" class="w-5 h-5 text-white"></i>
-                    </button>
-                    <button @click.stop="lbDeleteShow = true" class="w-12 h-12 bg-red-500/20 backdrop-blur-md rounded-2xl flex items-center justify-center border border-red-500/20 active:scale-90 transition-transform">
-                        <i data-lucide="trash-2" class="w-5 h-5 text-red-500"></i>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Image Area with Animated Slide Transitions -->
-            <div class="flex-1 flex items-center justify-center relative overflow-hidden" style="min-height: 0;">
-                <!-- Current image (with drag transform) -->
-                <img :src="lbPhotos[lbIndex] ? '/images/' + lbPhotos[lbIndex].file_path.replace('/root/memories-sorted/data/input/', '') : ''"
-                     :key="'photo-' + lbPhotos[lbIndex]?.file_path"
-                     class="max-w-full max-h-full object-contain transition-transform duration-200 select-none"
-                     :style="lbDragX !== 0 ? 'transform: translateX(' + lbDragX + 'px) scale(' + (1 - Math.abs(lbDragX) * 0.0005) + '); opacity: ' + (1 - Math.abs(lbDragX) * 0.002) : ''"
-                     @touchstart.stop.passive="lbTouchStart($event, 'horizontal')"
-                     @touchmove.stop.passive="lbTouchMove($event, 'horizontal')"
-                     @touchend.stop.passive="lbTouchEnd('horizontal')">
-            </div>
-
-            <!-- Thumbnail Strip (auto-snaps to active) -->
-            <div class="relative z-10 px-4 pb-2"
-                 @touchstart.stop.passive="lbThumbDragX = $event.touches[0].clientX"
-                 @touchmove.stop.passive="lbThumbScroll($event)">
-                <div class="max-w-2xl mx-auto overflow-x-auto scrollbar-none flex gap-2 px-2 py-2 bg-zinc-900/60 backdrop-blur-2xl rounded-2xl border border-white/5 shadow-2xl" x-ref="thumbStrip">
-                    <template x-for="(p, i) in lbPhotos" :key="'strip-' + p.file_path">
-                        <button @click.stop="switchPhoto(i)"
-                                class="flex-shrink-0 w-14 h-14 rounded-xl overflow-hidden border-2 transition-all duration-300"
-                                :class="lbIndex === i ? 'border-blue-500 scale-110 ring-4 ring-blue-500/30 z-10 shadow-lg shadow-blue-500/20' : 'border-white/10 opacity-50 grayscale-[0.3] hover:opacity-80 hover:scale-105 hover:grayscale-0'">
-                            <img :src="'/images/' + p.file_path.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover">
-                        </button>
-                    </template>
-                </div>
-            </div>
-
-            <!-- Swipe-Up Info Panel -->
-            <div class="relative z-10"
-                 @touchstart.stop.passive="lbTouchStart($event, 'vertical')"
-                 @touchmove.stop.passive="lbTouchMove($event, 'vertical')"
-                 @touchend.stop.passive="lbTouchEnd('vertical')">
-                <!-- Drag Handle -->
-                <div class="flex justify-center py-2 cursor-pointer" @click.stop="lbInfoVisible = !lbInfoVisible">
-                    <div class="w-10 h-1 bg-white/20 rounded-full transition-opacity duration-200"
-                         :class="lbInfoVisible ? 'opacity-100' : 'opacity-50'"></div>
-                </div>
-                <!-- Collapsible Info Content -->
-                <div class="overflow-hidden transition-all duration-300 ease-out"
-                     :style="'max-height: ' + (lbInfoVisible ? '600px' : '0px') + '; opacity: ' + (lbInfoVisible ? '1' : '0')">
-                    <div class="max-w-lg mx-auto px-8 pb-10 pt-4 bg-gradient-to-t from-black via-black/90 to-transparent">
-                        <!-- Caption -->
-                        <div x-show="!lbCaptionEdit" @click.stop="lbCaptionEdit = true; lbCaption = lbPhotos[lbIndex]?.caption || ''" class="mb-4 cursor-text">
-                            <p class="text-lg font-medium text-white/90 leading-relaxed italic"
-                               x-text="lbPhotos[lbIndex]?.caption || 'Add a caption...'"></p>
-                        </div>
-                        <div x-show="lbCaptionEdit" class="mb-4">
-                            <textarea x-model="lbCaption" class="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white outline-none focus:ring-2 focus:ring-blue-500 mb-2"></textarea>
-                            <div class="flex gap-2">
-                                <button @click.stop="lbCaptionEdit = false" class="flex-1 py-3 rounded-xl bg-white/5 text-sm font-bold">Cancel</button>
-                                <button @click.stop="lbSaveCaption()" class="flex-1 py-3 rounded-xl bg-blue-500 text-sm font-bold">Save</button>
-                            </div>
-                        </div>
-                        <!-- People in this Photo -->
-                        <template x-if="getLbPeople().length > 0">
-                            <div class="mb-6">
-                                <p class="text-[10px] text-zinc-500 uppercase tracking-widest font-black mb-3">People in this photo</p>
-                                <div class="flex flex-wrap gap-3">
-                                    <template x-for="pInfo in getLbPeople()" :key="pInfo.id">
-                                        <button @click.stop="lbOpen = false; openPerson(pInfo)" class="flex items-center gap-2 bg-white/5 pr-3 pl-1 py-1 rounded-full border border-white/5 hover:bg-white/10 active:scale-95 transition-all">
-                                            <div class="w-8 h-8 rounded-full overflow-hidden bento-card bg-zinc-800 relative">
-                                                <img :src="getLiftedUrl(pInfo.id)" class="w-full h-full object-cover">
+                            <div class="grid grid-cols-4 gap-0.5 px-0.5 mt-2">
+                                <template x-for="(photo, index) in group.photos" :key="photo.file_path">
+                                    <div 
+                                        class="relative aspect-square cursor-pointer group active:opacity-70 transition-opacity"
+                                        :class="{'hero-card': index === 0 && !searchQuery && group.photos.length > 3}"
+                                        @click="selectMode ? toggleSelected(photo.file_path) : openLightbox(photo)"
+                                    >
+                                        <img 
+                                            :src="'/image/' + photo.file_path" 
+                                            :loading="index < 12 ? 'eager' : 'lazy'"
+                                            class="w-full h-full object-cover hover:opacity-90 transition-all"
+                                            @error="$el.src = 'https://placehold.co/400x400/18181b/ffffff?text=🧩'"
+                                        >
+                                        
+                                        <!-- Selection Overlay (Phase 2.1) -->
+                                        <div x-show="selectMode" class="absolute inset-0 z-10 transition-all" :class="isSelected(photo.file_path) ? 'bg-blue-600/30' : 'bg-transparent'">
+                                            <div class="absolute top-2 right-2 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all" :class="isSelected(photo.file_path) ? 'bg-blue-500 border-white shadow-lg' : 'bg-black/20 border-white/40'">
+                                                <svg x-show="isSelected(photo.file_path)" class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="4" d="M5 13l4 4L19 7"></path></svg>
                                             </div>
-                                            <span class="text-xs font-bold text-zinc-300" x-text="pInfo.display || 'Person'"></span>
-                                        </button>
-                                    </template>
-                                </div>
+                                        </div>
+
+                                        <!-- Face Overlay (Bubbles) -->
+                                        <div x-show="!selectMode" class="absolute bottom-1 left-1 flex -space-x-1.5 group-hover:scale-110 transition-transform origin-left">
+                                            <template x-for="pId in photo.person_ids.slice(0, 3)">
+                                                <div @click.stop="filterByPerson(pId)" class="w-4 h-4 rounded-full border border-black/50 overflow-hidden bg-zinc-800 shrink-0 shadow-xl pointer-events-auto">
+                                                    <img :src="'/crop/' + pId" class="w-full h-full object-cover">
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </template>
                             </div>
-                        </template>
-                        <!-- AI Tags -->
-                        <div class="flex flex-wrap gap-2 opacity-60">
-                            <template x-for="tag in (lbPhotos[lbIndex]?.ai_desc || '').split(',').slice(0, 5)">
-                                <span class="text-xs font-bold uppercase tracking-wider px-2 py-1 bg-white/10 rounded-lg" x-text="tag.trim()"></span>
-                            </template>
                         </div>
-                    </div>
+                    </template>
+                </section>
+            </div>
+
+            <!-- Albums View (Phase 2.3) -->
+            <div x-show="view === 'albums'" class="px-4 py-6" x-cloak>
+                <div class="flex items-center justify-between mb-8">
+                    <h2 class="text-2xl font-bold">Your Albums</h2>
+                    <span class="text-[10px] font-bold text-white/30 uppercase tracking-widest" x-text="albums.length + ' Collections'"></span>
                 </div>
-            </div>
-        </div>
-    <!-- Modal: Delete Confirmation -->
-    <div x-show="lbDeleteShow" x-cloak class="fixed inset-0 z-[75] flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl" style="display:none">
-        <div class="bg-zinc-900 border border-white/10 rounded-3xl w-full max-w-sm p-6 shadow-2xl text-center">
-            <div class="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <i data-lucide="trash-2" class="w-8 h-8 text-red-500"></i>
-            </div>
-            <h3 class="text-xl font-bold text-white mb-2">Delete Photo?</h3>
-            <p class="text-sm text-zinc-400 mb-6">This cannot be undone.</p>
-            <div class="flex gap-3">
-                <button @click="lbDeleteShow = false" class="flex-1 py-3 rounded-2xl bg-white/5 text-white font-bold">Cancel</button>
-                <button @click="doDeletePhoto()" class="flex-1 py-3 rounded-2xl bg-red-500 text-white font-bold">Delete</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal: Confirm Dialog -->
-    <div x-show="confirmShow" x-cloak class="fixed inset-0 z-[75] flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl" style="display:none">
-        <div class="bg-zinc-900 border border-white/10 rounded-3xl w-full max-w-sm p-6 shadow-2xl text-center">
-            <h3 class="text-xl font-bold text-white mb-2" x-text="confirmMessage"></h3>
-            <div class="flex gap-3 mt-6">
-                <button @click="confirmShow = false" class="flex-1 py-3 rounded-2xl bg-white/5 text-white font-bold">Cancel</button>
-                <button @click="doConfirm()" class="flex-1 py-3 rounded-2xl bg-blue-500 text-white font-bold">Confirm</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal: Rename Person -->
-    <div x-show="rnOpen" x-cloak class="fixed inset-0 z-[75] flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl" style="display:none">
-        <div class="bg-zinc-900 border border-white/10 rounded-3xl w-full max-w-sm p-6 shadow-2xl">
-            <h3 class="text-xl font-bold text-white mb-6">Rename Person</h3>
-            <input x-model="rnInput" type="text" @keyup.enter="doRename()"
-                class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-5 mb-6 text-white outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter new name" x-ref="rnField">
-            <div class="flex gap-3">
-                <button @click="rnOpen = false" class="flex-1 py-3 rounded-2xl bg-white/5 text-white font-bold">Cancel</button>
-                <button @click="doRename()" class="flex-1 py-3 rounded-2xl bg-blue-500 text-white font-bold">Rename</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal: Moment Context Menu -->
-    <div x-show="momentMenuOpen" x-cloak class="fixed inset-0 z-[73]" style="display:none" @click="closeMomentMenu()">
-        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-zinc-900 border border-white/10 rounded-2xl p-2 w-64 shadow-2xl">
-            <button @click="openRenameMoment(momentMenuTarget); closeMomentMenu()" class="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 rounded-xl flex items-center gap-3">
-                <i data-lucide="edit-2" class="w-4 h-4"></i> Rename
-            </button>
-            <hr class="border-white/10 my-1">
-            <button @click="confirmAction('Delete &quot;'+momentMenuTarget.label+'&quot;? This cannot be undone.','deleteMoment::'+momentMenuTarget.id); closeMomentMenu()" class="w-full px-4 py-3 text-left text-sm text-red-400 hover:bg-red-500/10 rounded-xl flex items-center gap-3">
-                <i data-lucide="trash-2" class="w-4 h-4"></i> Delete
-            </button>
-        </div>
-    </div>
-
-    <!-- Modal: Rename Moment -->
-    <div x-show="mgRenameOpen" x-cloak class="fixed inset-0 z-[75] flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl" style="display:none">
-        <div class="bg-zinc-900 border border-white/10 rounded-3xl w-full max-w-sm p-6 shadow-2xl">
-            <h3 class="text-xl font-bold text-white mb-6">Rename Moment</h3>
-            <input x-model="mgRenameInput" type="text" @keyup.enter="doRenameMoment()"
-                class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-5 mb-6 text-white outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter new name">
-            <div class="flex gap-3">
-                <button @click="mgRenameOpen = false" class="flex-1 py-3 rounded-2xl bg-white/5 text-white font-bold">Cancel</button>
-                <button @click="doRenameMoment()" class="flex-1 py-3 rounded-2xl bg-blue-500 text-white font-bold">Rename</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal: Organize / Add to Moment -->
-    <!-- Modal: Move to Folder -->
-        <div x-show="lbMoveShow" x-cloak class="fixed inset-0 z-[73] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-xl" style="display:none"
-             @click="lbMoveShow = false">
-            <div @click.stop class="bg-zinc-900 border-t sm:border border-white/10 rounded-t-[32px] sm:rounded-3xl w-full max-w-lg p-6 shadow-2xl">
-                <div class="w-12 h-1.5 bg-white/10 rounded-full mx-auto mb-6 sm:hidden"></div>
-                <h3 class="text-lg font-bold text-white mb-4">Organize Photo</h3>
-
-                <!-- Folder Grid -->
-                <p class="text-xs text-zinc-500 uppercase tracking-widest font-bold mb-3">Move to Folder</p>
-                <div class="grid grid-cols-4 gap-2 mb-4">
-                    <template x-for="f in availableFolders" :key="f.name">
-                        <button @click.stop="doMovePhoto(f.path)"
-                                class="flex flex-col items-center p-3 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 active:scale-95 transition-all">
-                            <div class="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center mb-2">
-                                <i data-lucide="folder" class="w-5 h-5 text-zinc-400"></i>
+                <div class="grid grid-cols-2 gap-4">
+                    <template x-for="album in albums" :key="album.id">
+                        <div @click="openAlbum(album)" class="group cursor-pointer">
+                            <div class="relative aspect-square rounded-3xl overflow-hidden bg-white/5 border border-white/10 mb-3 group-hover:border-white/30 transition-all">
+                                <img :src="'/image/' + (album.photo_paths[0] || '')" class="w-full h-full object-cover opacity-60 group-hover:scale-110 transition-all duration-1000">
+                                <div class="absolute top-3 right-3 px-2 py-1 rounded-full bg-black/40 backdrop-blur-md text-[9px] font-bold uppercase tracking-widest border border-white/10" x-text="album.photo_paths.length"></div>
                             </div>
-                            <span class="text-[11px] font-bold text-zinc-300 truncate w-full text-center" x-text="f.name"></span>
-                        </button>
+                            <h3 class="text-sm font-bold truncate" x-text="album.name"></h3>
+                            <p class="text-[9px] font-bold text-white/30 uppercase tracking-widest" x-text="new Date(album.created_at).toLocaleDateString()"></p>
+                        </div>
                     </template>
                 </div>
-
-                <!-- New Folder -->
-                <div class="mb-6">
-                    <div class="flex gap-2">
-                        <input x-model="customFolderName" type="text" placeholder="New folder name..."
-                               @click.stop
-                               @keydown.enter.stop="doMovePhoto('/root/memories-sorted/data/input/' + customFolderName)"
-                               class="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500">
-                        <button @click.stop="doMovePhoto('/root/memories-sorted/data/input/' + customFolderName)"
-                                :disabled="!customFolderName.trim()"
-                                class="bg-blue-500 text-white px-5 rounded-xl font-bold text-sm disabled:opacity-50 active:scale-95 transition-all">Create</button>
-                    </div>
-                </div>
-
-                <button @click.stop="lbMoveShow = false" class="w-full py-3 rounded-xl text-zinc-400 font-bold hover:bg-white/5 transition-colors">Cancel</button>
             </div>
-        </div>
 
-
-    <!-- Modal: New Moment with Photo Select -->
-    <div x-show="addMomentOpen" x-cloak class="fixed inset-0 z-[73] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-md" style="display:none">
-        <div class="bg-zinc-900 border-t sm:border border-white/10 rounded-t-[32px] sm:rounded-3xl w-full max-w-lg p-6 shadow-2xl">
-                <h3 class="text-2xl font-bold text-white mb-1">New Moment</h3>
-                <p class="text-sm text-zinc-500 mb-6">Group your favorite memories.</p>
+            <!-- People View (Phase 1.1) -->
+            <div x-show="view === 'people'" class="px-4 py-6" x-cloak>
+                <h2 class="text-2xl font-bold mb-8">Intelligence Registry</h2>
                 
-                <input x-model="newMomentLabel" type="text" 
-                    class="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-5 mb-6 text-white outline-none focus:ring-2 focus:ring-blue-500" 
-                    placeholder="Moment Name (e.g. Summer 2026)">
-
-                <div class="mb-6">
-                    <div class="flex justify-between items-center mb-3">
-                        <span class="text-xs font-bold text-zinc-400 uppercase tracking-widest">Select Photos</span>
-                        <span class="text-xs font-bold text-blue-400" x-text="selectedPhotos.length + ' selected'"></span>
-                    </div>
-                    <div class="flex gap-2 overflow-x-auto pb-2 -mx-2 px-2 scrollbar-none">
-                        <template x-for="p in allPhotos.slice(0, 20)" :key="p.file_path">
-                            <div @click="selectedPhotos.includes(p.file_path) ? selectedPhotos = selectedPhotos.filter(x => x !== p.file_path) : selectedPhotos.push(p.file_path)"
-                                 class="relative flex-shrink-0 w-24 h-24 rounded-xl overflow-hidden cursor-pointer active:scale-95 transition-all">
-                                <img :src="'/images/' + p.file_path.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover">
-                                <div class="absolute inset-0 bg-blue-500/40 flex items-center justify-center opacity-0 transition-opacity"
-                                     :class="selectedPhotos.includes(p.file_path) ? 'opacity-100' : 'opacity-0'">
-                                    <i data-lucide="check" class="w-8 h-8 text-white"></i>
-                                </div>
+                <!-- Recognized People -->
+                <div class="grid grid-cols-3 gap-4">
+                    <template x-for="person in filteredPeople" :key="person.id">
+                        <div class="flex flex-col items-center gap-3 group cursor-pointer" @click="filterByPerson(person.id)">
+                            <div class="relative w-full aspect-square rounded-3xl overflow-hidden bg-white/5 border border-white/10 group-hover:border-blue-500/50 transition-all">
+                                <img :src="'/crop/' + person.id" class="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-opacity">
+                                <button @click.stop="startRename(person)" class="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 backdrop-blur-md opacity-0 group-hover:opacity-100 transition-all border border-white/10 hover:bg-blue-600 hover:border-white/20">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                </button>
                             </div>
-                        </template>
+                            <div class="text-center">
+                                <h4 class="text-xs font-bold truncate w-24" x-text="person.name || 'Set Name'"></h4>
+                                <p class="text-[9px] font-bold text-white/30 uppercase tracking-widest" x-text="person.count + ' Photos'"></p>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Add / Import View -->
+            <div x-show="view === 'add'" class="px-6 py-12" x-cloak>
+                <h2 class="text-2xl font-bold mb-2">Add Memories</h2>
+                <p class="text-sm text-white/40 mb-12">Consolidate your life's media into one intelligence layer.</p>
+                
+                <div class="space-y-4">
+                    <div class="bg-zinc-900 border border-white/10 p-6 rounded-3xl flex items-center justify-between group cursor-pointer">
+                        <div class="flex items-center gap-5">
+                            <div class="w-12 h-12 bg-white text-black rounded-2xl flex items-center justify-center group-hover:scale-110 transition-all"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg></div>
+                            <div><h3 class="font-bold">Google Drive</h3><p class="text-xs text-white/30">Connect & Sync Photos</p></div>
+                        </div>
+                        <span class="text-[10px] font-black tracking-widest uppercase py-1 px-3 rounded-full bg-white/5 text-white/30">Phase 3</span>
+                    </div>
+
+                    <div class="bg-zinc-900 border border-white/10 p-6 rounded-3xl flex items-center justify-between group cursor-pointer opacity-50">
+                        <div class="flex items-center gap-5">
+                            <div class="w-12 h-12 bg-blue-500 text-white rounded-2xl flex items-center justify-center"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg></div>
+                            <div><h3 class="font-bold">Telegram Bot</h3><p class="text-xs text-white/30">Forward to @MemoriesBot</p></div>
+                        </div>
+                        <span class="text-[10px] font-black tracking-widest uppercase py-1 px-3 rounded-full bg-white/5 text-white/30">Soon</span>
+                    </div>
+
+                    <div class="bg-white/5 border-2 border-dashed border-white/10 p-12 rounded-3xl text-center group cursor-pointer hover:border-blue-500/40 transition-all">
+                        <div class="w-16 h-16 bg-white/10 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-all"><svg class="w-8 h-8 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg></div>
+                        <h3 class="font-bold mb-1">Local Upload</h3>
+                        <p class="text-xs text-white/30">Click or drag binary files here</p>
                     </div>
                 </div>
+            </div>
+        </main>
 
-                <div class="flex gap-3">
-                    <button @click="addMomentOpen = false" class="flex-1 py-4 text-zinc-500 font-bold">Cancel</button>
-                    <button @click="doAddMoment()" class="flex-1 bg-blue-500 py-4 rounded-2xl font-bold">Create</button>
+        <!-- Selection Bar (Phase 2.1) -->
+        <div x-show="selectMode && selectedPhotos.length > 0" x-transition:enter="translate-y-full" x-transition:enter-end="translate-y-0" class="fixed bottom-24 left-1/2 -translate-x-1/2 w-[90%] max-w-sm z-50 bg-white text-black rounded-3xl p-4 flex items-center justify-between shadow-2xl safe-bottom mb-2" x-cloak>
+            <div class="flex flex-col px-2">
+                <span class="text-xs font-bold" x-text="selectedPhotos.length + ' Selected'"></span>
+                <span class="text-[9px] font-bold opacity-50 uppercase tracking-widest">Memories</span>
+            </div>
+            <div class="flex gap-2">
+                <button @click="openAlbumCreator()" class="p-2 rounded-2xl bg-black/5 hover:bg-black/10 transition-all"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg></button>
+                <button @click="deleteSelected()" class="p-2 rounded-2xl text-red-600 hover:bg-red-500/10 transition-all"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+            </div>
+        </div>
+
+        <!-- Global Undo Popover -->
+        <div x-show="undoQueue.length > 0" class="fixed bottom-28 left-4 right-4 z-[60] safe-bottom" x-cloak>
+            <div class="bg-zinc-800 text-white rounded-2xl p-4 flex items-center justify-between shadow-2xl border border-white/10 animate-slide-up">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-full bg-red-500/20 text-red-500 flex items-center justify-center">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </div>
+                    <span class="text-sm font-semibold" x-text="undoQueue.length + ' photo moved to Trash'"></span>
+                </div>
+                <button @click="undoLastDelete()" class="px-4 py-2 bg-white text-black text-xs font-bold rounded-xl active:scale-95 transition-all">Undo</button>
+            </div>
+        </div>
+
+        <!-- Person Rename Modal (Phase 1.1) -->
+        <div x-show="renamingPerson" class="fixed inset-0 z-[100] flex items-center justify-center p-6 backdrop-blur-sm bg-black/60" x-cloak>
+            <div class="bg-zinc-900 border border-white/10 p-6 rounded-3xl w-full max-w-xs shadow-2xl">
+                <h3 class="text-lg font-bold mb-1">Name this Person</h3>
+                <p class="text-xs opacity-50 mb-6 font-bold uppercase tracking-widest leading-loose">Intelligence Registry</p>
+                <div class="w-full h-32 rounded-2xl overflow-hidden bg-white/5 mb-6">
+                    <img :src="'/crop/' + (renamingPerson ? renamingPerson.id : '')" class="w-full h-full object-cover">
+                </div>
+                <input type="text" x-model="newName" class="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-4 mb-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Type a name..." @keyup.enter="saveName()">
+                <div class="flex gap-2">
+                    <button @click="renamingPerson = null" class="flex-1 py-3 text-xs font-bold opacity-50">Cancel</button>
+                    <button @click="saveName()" class="flex-1 py-3 bg-blue-600 text-xs font-bold rounded-xl active:scale-95 transition-all">Save Identity</button>
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- Modal: Person Gallery -->
-    <template x-if="pgOpen">
-        <div class="fixed inset-0 z-[65] bg-black flex flex-col" @click.self="pgOpen = false">
-            <div class="flex items-center justify-between p-4 bg-zinc-900/80 backdrop-blur-md z-10">
-                <div>
-                    <h2 class="text-xl font-bold text-white" x-text="pgPerson?.display || 'Person'"></h2>
-                    <p class="text-xs text-zinc-500" x-text="pgPhotos.length + ' photos'"></p>
+        <!-- Album Creator Modal (Phase 2.3) -->
+        <div x-show="creatingAlbum" class="fixed inset-0 z-[100] flex items-center justify-center p-6 backdrop-blur-sm bg-black/60" x-cloak>
+            <div class="bg-zinc-900 border border-white/10 p-6 rounded-3xl w-full max-w-sm shadow-2xl">
+                <h3 class="text-lg font-bold mb-1">New Album</h3>
+                <p class="text-[10px] opacity-40 mb-6 font-bold uppercase tracking-widest" x-text="selectedPhotos.length + ' photos ready to group'"></p>
+                <input type="text" x-model="albumName" class="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-4 mb-6 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g. 'Family Summer 2024'" @keyup.enter="confirmCreateAlbum()">
+                <div class="flex gap-2">
+                    <button @click="creatingAlbum = false" class="flex-1 py-4 text-xs font-bold opacity-40">Discard</button>
+                    <button @click="confirmCreateAlbum()" class="flex-1 py-4 bg-white text-black text-xs font-bold rounded-2xl active:scale-95">Create Collection</button>
                 </div>
-                <button @click="pgOpen = false" class="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
-                    <i data-lucide="x" class="w-5 h-5 text-white"></i>
+            </div>
+        </div>
+
+        <!-- Nav Bar (Phase 2.3 Tab) -->
+        <nav class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-2xl bg-zinc-950/80 backdrop-blur-2xl border-t border-white/5 px-6 pt-3 pb-8 flex justify-between items-center z-40 transition-transform duration-500" :class="selectMode ? 'translate-y-full' : 'translate-y-0'">
+            <button @click="view = 'timeline'; clearFilters()" class="flex flex-col items-center gap-1 group">
+                <svg class="w-6 h-6 outline-none" :class="view === 'timeline' ? 'text-blue-500' : 'text-white/30 group-hover:text-white/60'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                <span class="text-[9px] font-bold uppercase tracking-tighter" :class="view === 'timeline' ? 'text-white' : 'text-white/20'">Timeline</span>
+            </button>
+            <button @click="view = 'albums'" class="flex flex-col items-center gap-1 group">
+                <svg class="w-6 h-6 outline-none" :class="view === 'albums' ? 'text-blue-500' : 'text-white/30 group-hover:text-white/60'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                <span class="text-[9px] font-bold uppercase tracking-tighter" :class="view === 'albums' ? 'text-white' : 'text-white/20'">Albums</span>
+            </button>
+            <div class="relative -top-6">
+                <button @click="view = 'add'" class="w-14 h-14 bg-white text-black rounded-full flex items-center justify-center shadow-2xl active:scale-90 transition-all">
+                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
                 </button>
             </div>
-            <div class="flex-1 overflow-y-auto p-4">
-                <template x-if="pgPhotos.length === 0">
-                    <div class="flex flex-col items-center justify-center py-20 text-center opacity-50">
-                        <div class="w-20 h-20 bg-zinc-900 rounded-full flex items-center justify-center mb-4 border border-white/5">
-                            <i data-lucide="image-off" class="w-10 h-10 text-zinc-700"></i>
-                        </div>
-                        <h3 class="text-xl font-bold text-zinc-300">No Photos of this Person</h3>
-                        <p class="text-zinc-500 max-w-xs mx-auto mt-2">Wait for AI processing or check assignments.</p>
-                    </div>
-                </template>
-                <div class="grid grid-cols-3 gap-2">
-                    <template x-for="(photo, idx) in pgPhotos" :key="'pg-' + photo.file_path">
-                        <div @click="lbFromPhotos([...pgPhotos], idx); pgOpen = false; lbOpen = true" class="aspect-square rounded-xl overflow-hidden cursor-pointer">
-                            <img :src="'/images/' + photo.file_path.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover active:scale-95 transition-transform">
-                        </div>
-                    </template>
-                </div>
-            </div>
-        </div>
-    </template>
+            <button @click="view = 'people'" class="flex flex-col items-center gap-1 group">
+                <svg class="w-6 h-6 outline-none" :class="view === 'people' ? 'text-blue-500' : 'text-white/30 group-hover:text-white/60'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                <span class="text-[9px] font-bold uppercase tracking-tighter" :class="view === 'people' ? 'text-white' : 'text-white/20'">People</span>
+            </button>
+            <button @click="showNav = true" class="flex flex-col items-center gap-1 group">
+                <svg class="w-6 h-6 text-white/30 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                <span class="text-[9px] font-bold uppercase tracking-tighter text-white/20">System</span>
+            </button>
+        </nav>
 
-    <!-- Modal: Moment Gallery -->
-    <template x-if="mgOpen">
-        <div class="fixed inset-0 z-[65] bg-black flex flex-col" @click.self="mgOpen = false">
-            <div class="flex items-center justify-between p-4 bg-zinc-900/80 backdrop-blur-md z-10">
-                <div>
-                    <h2 class="text-xl font-bold text-white" x-text="mgMoment?.label || 'Moment'"></h2>
-                    <p class="text-xs text-zinc-500" x-text="mgPhotos.length + ' photos'"></p>
-                </div>
-                <div class="flex items-center gap-2">
-                    <label class="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center cursor-pointer active:scale-95 transition-all outline-none">
-                        <input type="file" multiple accept="image/*" class="hidden" @change="doUpload($event.target.files)">
-                        <i data-lucide="plus" class="w-5 h-5 text-blue-400"></i>
-                    </label>
-                    <button @click="mgOpen = false" class="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
-                        <i data-lucide="x" class="w-5 h-5 text-white"></i>
-                    </button>
-                </div>
-            </div>
-            <div class="flex-1 overflow-y-auto p-4 pb-20">
-                <template x-if="mgPhotos.length === 0">
-                    <div class="flex flex-col items-center justify-center py-20 text-center opacity-50">
-                        <div class="w-20 h-20 bg-zinc-900 rounded-full flex items-center justify-center mb-4 border border-white/5">
-                            <i data-lucide="layers" class="w-10 h-10 text-zinc-700"></i>
-                        </div>
-                        <h3 class="text-xl font-bold text-zinc-300">Empty Moment</h3>
-                        <p class="text-zinc-500 max-w-xs mx-auto mt-2 mb-6">Add photos to this moment or wait for AI sync.</p>
-                        <label class="px-6 py-3 bg-blue-500 text-white font-bold rounded-xl cursor-pointer active:scale-95 transition-all">
-                            <input type="file" multiple accept="image/*" class="hidden" @change="doUpload($event.target.files)">
-                            Upload Directly
-                        </label>
-                    </div>
-                </template>
-                <div class="grid grid-cols-3 gap-2">
-                    <template x-for="(photo, idx) in mgPhotos" :key="'mg-' + photo.file_path">
-                        <div @click="lbFromPhotos([...mgPhotos], idx); mgOpen = false; lbOpen = true" class="aspect-square rounded-xl overflow-hidden cursor-pointer">
-                            <img :src="'/images/' + photo.file_path.replace('/root/memories-sorted/data/input/', '')" class="w-full h-full object-cover active:scale-95 transition-transform">
-                        </div>
-                    </template>
-                </div>
-            </div>
-        </div>
-    </template>
-
-    <!-- Modal: Person Context Menu -->
-    <div x-show="personMenuOpen" x-cloak class="fixed inset-0 z-[73]" style="display:none" @click="closePersonMenu()">
-        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-zinc-900 border border-white/10 rounded-2xl p-2 w-64 shadow-2xl">
-            <button @click="openPerson(personMenuTarget); closePersonMenu()" class="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 rounded-xl flex items-center gap-3">
-                <i data-lucide="images" class="w-4 h-4"></i> View Photos
-            </button>
-            <button @click="openRename(personMenuTarget); closePersonMenu()" class="w-full px-4 py-3 text-left text-sm text-zinc-400 hover:bg-white/10 rounded-xl flex items-center gap-3">
-                <i data-lucide="edit-2" class="w-4 h-4"></i> Rename
-            </button>
-            <hr class="border-white/10 my-1">
-            <button @click="confirmAction('Delete '+personMenuTarget.display+'? Photos keep their faces but this person will be removed.','deletePerson::'+personMenuTarget.id); closePersonMenu()" class="w-full px-4 py-3 text-left text-sm text-red-400 hover:bg-red-500/10 rounded-xl flex items-center gap-3">
-                <i data-lucide="trash-2" class="w-4 h-4"></i> Delete
-            </button>
-        </div>
     </div>
 
-    <!-- App Logic -->
     <script>
-        function app() {
+        function memories() {
             return {
-                tab: 'timeline',
-                loading: false,
+                view: 'timeline',
                 allPhotos: [],
-                moments: [],
-                people: [],
-                insights: [],
                 searchQuery: '',
                 searchResults: [],
-                isSearchActive: false,
-                photoGroups: [],
-                dayGroups: [],
-                noDatePhotos: [],
+                people: {},
                 suggestions: [],
-                activePersonFilter: null,
-                activePersonDisplay: "",
-                dismissedSuggestions: JSON.parse(localStorage.getItem("dismissed_suggestions") || "[]"),
-                personColors: {},
-                peopleDrawer: false,
-                filteredPeople: [],
-                peopleVersion: 0,
-                toast: { show: false, text: '', type: 'info' },
-                uploading: false,
-                uploadProgress: 0,
-                uploadStatus: 'idle', // overall status: idle, uploading, processing, done, error
-                currentUploadJobs: {}, // {jobId: {status: string, filename: string, progress: number, found_people: []}}
-                lastUploadedFiles: null, // For retry functionality
-                uploadPreview: null, // For single-file preview
+                albums: [],
                 
-                // Onboarding - disabled by default
-                showOnboarding: false,
-                onboardingStep: 1,
-                
-                // Modal States
-                addMomentOpen: false,
-                newMomentLabel: '',
+                selectMode: false,
                 selectedPhotos: [],
+                undoQueue: [],
                 
-                // Person Gallery
-                pgOpen: false,
-                pgPerson: null,
-                pgPhotos: [],
-                personMenuOpen: false,
-                personMenuTarget: null,
-                rnOpen: false,
-                rnId: '',
-                rnInput: '',
+                renamingPerson: null,
+                newName: '',
+                creatingAlbum: false,
+                albumName: '',
 
-                // Moment Context Menu
-                momentMenuOpen: false,
-                momentMenuTarget: null,
-                mgRenameOpen: false,
-                mgRenameTarget: null,
-                mgRenameInput: '',
-
-                // Moment Gallery
-                mgOpen: false,
-                mgMoment: null,
-                mgPhotos: [],
-                mgEdit: false,
-                
-                // Selection / Bulk
-                selectionMode: false,
-                selectedItems: [],
-                customFolderName: '',
-                availableFolders: [],
-                lbAddPhotoPath: null,
-                
-                // Lightbox
-                lbOpen: false,
-                lbIndex: 0,
-                lbPhotos: [],
-                lbDetail: true,
-                lbCaption: '',
-                lbPhoto: null,
-                lbCaptionEdit: false,
-                lbMoveShow: false,
-                lbDeleteShow: false,
-                lbSwipeOffset: 0,
-                lbTStart: 0,
-                lbTStartTime: 0,
-                // New swipe state
-                lbDragX: 0, lbDragY: 0,
-                lbTouchDir: null,
-                lbTouchStartPos: null,  // { x, y }
-                lbTouchStartTime: 0,
-                lbInfoVisible: false,
-                lbThumbDragX: 0,
-                confirmShow: false,
-                confirmMessage: '',
-                confirmAction: '',
-
-                async init() {
-                    // Global helper for rendered inline links
-                    window.dispatchInsightAction = (type, id) => {
-                        const app = document.querySelector('[x-data]').__x.$data;
-                        app.handleInsightAction({type: type, id: id, path: id});
-                    };
-
-                    // Onboarding disabled
-                    // this.showOnboarding = !localStorage.getItem('zaiya_onboarded');
-                    await this.refreshAll();
+                init() {
+                    this.loadPhotos();
+                    this.loadPeople();
+                    this.loadSuggestions();
+                    this.loadAlbums();
                     
-                    // Recover active upload jobs on refresh
-                    try {
-                        const activeRes = await fetch('/api/upload/active-jobs');
-                        const activeJobs = await activeRes.json();
-                        if (Object.keys(activeJobs).length > 0) {
-                            this.currentUploadJobs = activeJobs;
-                            this.uploading = true;
-                            this.uploadStatus = 'processing';
-                            this.pollAllStatuses();
+                    // Periodic refresh
+                    setInterval(() => {
+                        if (this.view === 'timeline' && !this.searchQuery && !this.selectMode) {
+                            this.loadPhotos();
                         }
-                    } catch (e) {}
-
-                    this.$nextTick(() => lucide.createIcons());
-                    
-                    // Keyboard navigation for Lightbox
-                    window.addEventListener('keydown', (e) => {
-                        if (!this.lbOpen) return;
-                        if (e.key === 'ArrowRight') this.lbNext();
-                        if (e.key === 'ArrowLeft') this.lbPrev();
-                        if (e.key === 'Escape') this.lbOpen = false;
-                    });
-
-                    // Lucide watcher
-                    this.$watch('tab', () => this.$nextTick(() => lucide.createIcons()));
-                    this.$watch('lbOpen', () => this.$nextTick(() => lucide.createIcons()));
-                    this.$watch('pgOpen', () => this.$nextTick(() => lucide.createIcons()));
-                    this.$watch('mgOpen', () => this.$nextTick(() => lucide.createIcons()));
-                    this.$watch('searchQuery', () => this.filterPeople());
+                    }, 30000);
                 },
 
-                flash(text, type = 'info') {
-                    this.toast = { show: true, text, type };
-                    setTimeout(() => this.toast.show = false, 3000);
+                async loadPhotos() {
+                    const res = await fetch('/api/photos');
+                    this.allPhotos = await res.json();
                 },
 
-                async refreshAll() {
-                    try {
-                        const [pRes, mRes, pRegRes, iRes, sRes] = await Promise.all([
-                            fetch('/api/photos'),
-                            fetch('/api/moments'),
-                            fetch('/api/people'),
-                            fetch('/api/insights'),
-                            fetch('/api/suggestions')
-                        ]);
-                        this.allPhotos = await pRes.json() || []; this.groupPhotosByDay();
-                        this.moments = (await mRes.json() || []).sort((a,b) => b.timestamp - a.timestamp);
-                        this.insights = await iRes.json() || [];
-                        this.suggestions = await sRes.json() || [];
-                        const newPeople = await pRegRes.json() || [];
-                        // Pre-compute avatarUrl for each person so Alpine gets a plain string
-                        for (const p of newPeople) {
-                            if (p.avatar) {
-                                const path = p.avatar.replace('/root/memories-sorted/data/input/', '');
-                                if (p.face_bbox && p.face_bbox.length >= 4) {
-                                    const [cx, cy, fw, fh] = p.face_bbox;
-                                    p.avatarUrl = `/crop/${path}?crop=${cx},${cy},${fw},${fh}&t=${Date.now()}`;
-                                } else {
-                                    p.avatarUrl = `/images/${path}?t=${Date.now()}`;
-                                }
-                            } else {
-                                p.avatarUrl = '';
-                            }
-                        }
-                        this.people = newPeople;
-                        this.rawPeopleVersion++;
+                async loadPeople() {
+                    const res = await fetch('/api/people');
+                    this.people = await res.json();
+                },
 
-                        // Merge unnamed people into one "Unidentified" group
-                        const named = this.people.filter(p => p.display && p.display !== 'Person' && p.display.trim() !== '');
-                        const unnamed = this.people.filter(p => !p.display || p.display === 'Person' || p.display.trim() === '');
-                        if (unnamed.length > 1) {
-                            // Group into single "Unidentified" entry with most frequent face as avatar
-                            unnamed.sort((a, b) => (b.face_count || 0) - (a.face_count || 0));
-                            const merged = {
-                                id: 'UNIDENTIFIED_GROUP',
-                                display: 'Unidentified',
-                                face_count: unnamed.reduce((s, p) => s + (p.face_count || 0), 0),
-                                person_count: unnamed.length,
-                                avatar: unnamed[0].avatar,
-                                avatarUrl: unnamed[0].avatarUrl,
-                                face_bbox: unnamed[0].face_bbox,
-                                is_group: true
-                            };
-                            named.push(merged);
-                        }
-                        this.people = named;
-                        this.peopleVersion++;
+                async loadSuggestions() {
+                    const res = await fetch('/api/suggestions');
+                    this.suggestions = await res.json();
+                },
 
-                        // Sync active Moment Gallery state
-                        if (this.mgOpen && this.mgMoment) {
-                            const updatedMoment = this.moments.find(m => m.id === this.mgMoment.id);
-                            if (updatedMoment) {
-                                this.mgMoment = updatedMoment;
-                                // Combine actual member paths + any ghosts tagged for this moment
-                                const actualPhotos = (updatedMoment.member_paths || []).map(fp => this.allPhotos.find(p => p.file_path === fp)).filter(Boolean);
-                                const ghostPhotos = this.allPhotos.filter(p => p.is_ghost && p.context_type === 'moment' && p.context_id === updatedMoment.id);
-                                this.mgPhotos = [...ghostPhotos, ...actualPhotos];
-                            }
-                        }
-                    } catch (e) {
-                        this.flash('System connection error', 'error');
+                async loadAlbums() {
+                    const res = await fetch('/api/albums');
+                    this.albums = await res.json();
+                },
+
+                async searchPhotos() {
+                    if (!this.searchQuery) {
+                        this.searchResults = [];
+                        return;
                     }
+                    const res = await fetch(`/api/search?q=${encodeURIComponent(this.searchQuery)}`);
+                    const data = await res.json();
+                    this.searchResults = data.results;
                 },
 
-                filterPeople() {
-                    // Trigger reactivity for search
-                    this.people = [...this.people];
+                get groupedTimeline() {
+                    let source = this.searchQuery ? this.searchResults : this.allPhotos;
+                    
+                    // Apply filtering if active
+                    if (this.activeFilter) {
+                        if (this.activeFilter.type === 'person') {
+                            source = source.filter(p => p.person_ids.includes(this.activeFilter.id));
+                        }
+                    }
+
+                    const groups = {};
+                    source.forEach(p => {
+                        const date = (p.captured_at || 'clip_0000').split(' ')[0];
+                        const key = (date === 'clip_0000' || date === 'None') ? '📎 No Date' : date;
+                        if (!groups[key]) groups[key] = [];
+                        groups[key].push(p);
+                    });
+                    return Object.keys(groups).sort((a, b) => b.localeCompare(a)).map(date => ({
+                        date, photos: groups[date]
+                    }));
                 },
 
                 get filteredPeople() {
-                    const q = (this.searchQuery || '').toLowerCase();
-                    return this.people.filter(pe => {
-                        const name = pe.display || 'Person';
-                        return name.toLowerCase().includes(q);
-                    });
+                    return Object.keys(this.people)
+                        .filter(id => id !== 'UNIDENTIFIED')
+                        .map(id => ({ id, ...this.people[id] }))
+                        .sort((a, b) => b.count - a.count);
                 },
 
-                getAvatarSrc(p) { return p.avatarUrl || ''; },
-                getPersonStyle(p) { return ''; },
-
-                openLightbox(idx, photos) {
-                    this.lbIndex = idx;
-                    this.lbPhotos = [...photos];
-                    this.lbDetail = true;
-                    this.lbCaptionEdit = false;
-                    this.lbSwipeOffset = 0;
-                    this.lbDragX = 0;
-                    this.lbDragY = 0;
-                    this.lbInfoVisible = false;
-                    this.lbOpen = true;
+                formatGroupDate(iso) {
+                    if (iso === '📎 No Date') return iso;
+                    const d = new Date(iso);
+                    if (isNaN(d)) return iso;
+                    return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
                 },
 
-                // --- Unified Touch/Swipe Handler ---
-                lbTouchStart(event, defaultDir) {
-                    this.lbTouchStartPos = { x: event.touches[0].clientX, y: event.touches[0].clientY };
-                    this.lbTouchStartTime = Date.now();
-                    this.lbTouchDir = defaultDir;
+                toggleSelectMode() {
+                    this.selectMode = !this.selectMode;
+                    if (!this.selectMode) this.selectedPhotos = [];
                 },
 
-                lbTouchMove(event, dirHint) {
-                    if (!this.lbTouchStartPos) return;
-                    const dx = event.touches[0].clientX - this.lbTouchStartPos.x;
-                    const dy = event.touches[0].clientY - this.lbTouchStartPos.y;
-                    const absDx = Math.abs(dx), absDy = Math.abs(dy);
-                    if (!this.lbTouchDir && (absDx + absDy > 10)) {
-                        this.lbTouchDir = absDx > absDy ? 'horizontal' : 'vertical';
-                    }
-                    if (this.lbTouchDir === 'horizontal') {
-                        this.lbDragX = dx;
-                    } else if (this.lbTouchDir === 'vertical') {
-                        this.lbDragY = dy;
-                    }
+                toggleSelected(path) {
+                    const idx = this.selectedPhotos.indexOf(path);
+                    if (idx === -1) this.selectedPhotos.push(path);
+                    else this.selectedPhotos.splice(idx, 1);
                 },
 
-                lbTouchEnd(dir) {
-                    if (!this.lbTouchStartPos) return;
-                    const elapsed = Date.now() - this.lbTouchStartTime;
-                    if (this.lbTouchDir === 'horizontal') {
-                        const dx = this.lbDragX;
-                        if (Math.abs(dx) > 50 && elapsed < 500) {
-                            if (dx > 0) this.prevPhoto();
-                            else this.nextPhoto();
-                        }
-                    } else if (this.lbTouchDir === 'vertical') {
-                        const dy = this.lbDragY;
-                        if (dy < -40) this.lbInfoVisible = true;
-                        else if (dy > 60) this.lbInfoVisible = false;
-                    }
-                    this.lbDragX = 0;
-                    this.lbDragY = 0;
-                    this.lbTouchDir = null;
-                    this.lbTouchStartPos = null;
+                isSelected(path) {
+                    return this.selectedPhotos.includes(path);
                 },
 
-                switchPhoto(i) {
-                    this.lbIndex = i;
-                    this.lbCaptionEdit = false;
-                    this.lbDragX = 0;
-                    this.$nextTick(() => {
-                        const strip = this.$refs.thumbStrip;
-                        if (strip) strip.scrollTo({ left: i * 60 - strip.clientWidth / 2 + 28, behavior: 'smooth' });
-                    });
+                cancelSelect() {
+                    this.selectMode = false;
+                    this.selectedPhotos = [];
                 },
 
-                thumbScroll(event) { /* native scroll */ },
-
-                toggleSelection(path) {
-                    if (this.selectedItems.includes(path)) {
-                        this.selectedItems = this.selectedItems.filter(x => x !== path);
-                    } else {
-                        this.selectedItems.push(path);
-                    }
+                startRename(person) {
+                    this.renamingPerson = person;
+                    this.newName = person.name || '';
                 },
 
-                exitSelection() {
-                    this.selectionMode = false;
-                    this.selectedItems = [];
-                },
-
-                completeOnboarding() {
-                    this.showOnboarding = false;
-                    localStorage.setItem('zaiya_onboarded', 'true');
-                    this.flash('Welcome aboard!');
-                },
-
-                // Person Gallery
-                openPerson(p) {
-                    this.pgPerson = p;
-                    if (p.is_group && p.member_ids) {
-                        // Show all photos of ANY member in the unidentified group
-                        this.pgPhotos = this.allPhotos.filter(x => 
-                            (x.person_ids || []).some(id => p.member_ids.includes(id))
-                        );
-                    } else {
-                        this.pgPhotos = this.allPhotos.filter(x => (x.person_ids || []).includes(p.id));
-                    }
-                    this.pgOpen = true;
-                },
-                
-                openPersonMenu(p, event) {
-                    event.stopPropagation();
-                    this.personMenuTarget = p;
-                    this.personMenuOpen = true;
-                },
-                
-                closePersonMenu() {
-                    this.personMenuOpen = false;
-                    this.personMenuTarget = null;
-                },
-
-                openRename(p) {
-                    this.rnId = p.id;
-                    this.rnInput = p.display || '';
-                    this.rnOpen = true;
-                    this.$nextTick(() => { if (this.$refs.rnField) this.$refs.rnField.focus(); });
-                },
-
-                async doRename() {
-                    if (!this.rnInput.trim()) return;
-                    try {
-                        await fetch('/api/rename', {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({ person_id: this.rnId, new_name: this.rnInput })
-                        });
-                        this.flash('Renamed to "' + this.rnInput + '"');
-                        this.rnOpen = false;
-                        await this.refreshAll();
-                    } catch(e) { this.flash('Rename failed', 'error'); }
-                },
-
-                // Moment Context Menu
-                openMomentMenu(m, event) {
-                    event.stopPropagation();
-                    this.momentMenuTarget = m;
-                    this.momentMenuOpen = true;
-                },
-
-                closeMomentMenu() {
-                    this.momentMenuOpen = false;
-                    this.momentMenuTarget = null;
-                },
-
-                openRenameMoment(m) {
-                    this.mgRenameTarget = m;
-                    this.mgRenameInput = m.label || '';
-                    this.mgRenameOpen = true;
-                },
-
-                async doRenameMoment() {
-                    if (!this.mgRenameInput.trim()) return;
-                    try {
-                        await fetch('/api/moments/rename', {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({ moment_id: this.mgRenameTarget.id, new_label: this.mgRenameInput })
-                        });
-                        this.flash('Renamed to "' + this.mgRenameInput + '"');
-                        this.mgRenameOpen = false;
-                        await this.refreshAll();
-                    } catch(e) { this.flash('Rename failed', 'error'); }
-                },
-
-                // Moment Gallery
-                openMomentGallery(m) {
-                    this.mgEdit = false;
-                    this.mgMoment = m;
-                    // Combine actual member paths + any ghosts tagged for this moment
-                    const actualPhotos = (m.member_paths || []).map(fp => this.allPhotos.find(p => p.file_path === fp) || { file_path: fp, caption: '', processing_status: 'done' }).filter(Boolean);
-                    const ghostPhotos = this.allPhotos.filter(p => p.is_ghost && p.context_type === 'moment' && p.context_id === m.id);
-                    this.mgPhotos = [...ghostPhotos, ...actualPhotos];
-                    this.mgOpen = true;
-                },
-
-                nextPhoto() {
-                    if (this.lbIndex < this.lbPhotos.length - 1) { this.lbIndex++; this.lbCaptionEdit = false; }
-                },
-                prevPhoto() {
-                    if (this.lbIndex > 0) { this.lbIndex--; this.lbCaptionEdit = false; }
-                },
-                lbNext() { this.nextPhoto(); },
-                lbPrev() { this.prevPhoto(); },
-                lbFromPhotos(arr, idx) {
-                    this.lbPhotos = [...arr];
-                    this.lbIndex = idx;
-                    this.lbDetail = true;
-                    this.lbOpen = true;
-                    this.$nextTick(() => lucide.createIcons());
-                },
-
-                async refreshInsights() {
-                    this.flash('Refreshing memories...');
-                    try {
-                        const res = await fetch('/api/insights');
-                        const data = await res.json() || [];
-                        this.insights = data;
-                        this.flash('Memories updated');
-                    } catch(e) { this.flash('Failed to refresh', 'error'); }
-                    this.$nextTick(() => lucide.createIcons());
-                },
-
-                async doUpload(files) {
-                    if (!files || !files.length) return;
-                    this.lastUploadedFiles = files; // Store for retry
-                    this.uploading = true;
-                    this.uploadStatus = 'uploading';
-                    this.currentUploadJobs = {};
-                    this.uploadPreview = null; // Clear old preview
-
-                    // Local Preview for first image
-                    const reader = new FileReader();
-                    reader.onload = (e) => this.uploadPreview = e.target.result;
-                    reader.readAsDataURL(files[0]);
-
-                    let url = '/api/upload';
-                    if (this.mgOpen && this.mgMoment) {
-                        url += `?context_type=moment&context_id=${this.mgMoment.id}`;
-                    }
-
-                    try {
-                        for (const file of files) { // Iterate through selected files
-                            const formData = new FormData();
-                            formData.append('file', file); // Append each file individually
-                            
-                            // Let's make individual upload calls to the API for each file
-                            const res = await fetch(url, { method: 'POST', body: formData });
-                            const data = await res.json();
-
-                            if (data.job_id) {
-                                this.currentUploadJobs[data.job_id] = { 
-                                    status: 'queued', 
-                                    filename: file.name, 
-                                    progress: 0, 
-                                    found_people: [] 
-                                };
-                            } else {
-                                throw new Error('No Job ID received for ' + file.name);
-                            }
-                        }
-                        this.pollAllStatuses(); // Start polling for all jobs
-                    } catch (e) {
-                        this.flash(`Upload failed: ${e.message || e}`, 'error');
-                        this.resetUpload();
-                    }
-                },
-
-                async pollAllStatuses() {
-                    let allDone = true;
-                    let anyError = false;
-                    let overallProgress = 0;
-                    let completedJobs = 0;
-                    let anyDoneThisTurn = false;
-
-                    const jobIds = Object.keys(this.currentUploadJobs);
-                    if (jobIds.length === 0) {
-                        this.resetUpload();
-                        return;
-                    }
-
-                    for (const jobId of jobIds) {
-                        const job = this.currentUploadJobs[jobId];
-                        
-                        // Skip jobs that are already terminal in local state
-                        if (job.status === 'done' || job.status === 'error') {
-                            completedJobs++;
-                            if (job.status === 'done') overallProgress += 100;
-                            continue;
-                        }
-
-                        try {
-                            const res = await fetch(`/api/upload/status/${jobId}`);
-                            const data = await res.json();
-                            
-                            if (data.status === 'done' && job.status !== 'done') {
-                                anyDoneThisTurn = true;
-                            }
-                            
-                            job.status = data.status;
-                            job.error = data.error; // Capture error message
-                            job.found_people = data.found_people || [];
-                            
-                            if (job.status === 'done' || job.status === 'error') {
-                                completedJobs++;
-                            } else {
-                                allDone = false;
-                            }
-                            if (job.status === 'error') {
-                                anyError = true;
-                            }
-                            // Progress estimation
-                            if (job.status === 'uploading') overallProgress += 20;
-                            else if (job.status === 'syncing') overallProgress += 40;
-                            else if (job.status === 'faces') overallProgress += 60;
-                            else if (job.status === 'vectors') overallProgress += 80;
-                            else if (job.status === 'done') overallProgress += 100;
-                        } catch (e) {
-                            job.status = 'error';
-                            job.error = `Network error: ${e.message || e}`;
-                            anyError = true;
-                            allDone = false;
-                            completedJobs++;
-                        }
-                    }
-
-                    // Reactively refresh grid if any job finished
-                    if (anyDoneThisTurn) {
-                        this.refreshAll();
-                    }
-
-                    this.uploadProgress = (overallProgress / jobIds.length) || 0;
-                    this.uploadStatus = anyError ? 'error' : (allDone ? 'done' : 'processing');
-                    
-                    if (allDone) {
-                        const allFoundPeople = Object.values(this.currentUploadJobs).flatMap(j => j.found_people || []);
-                        const foundMsg = allFoundPeople.length > 0 ? `AI found ${[...new Set(allFoundPeople)].join(', ')}!` : 'AI processing complete';
-                        this.flash(anyError ? 'Some uploads failed' : foundMsg, anyError ? 'error' : 'success');
-                        
-                        // Immediate refresh one last time
-                        this.refreshAll();
-
-                        setTimeout(() => {
-                            this.resetUpload();
-                        }, 3000);
-                    } else {
-                        setTimeout(() => this.pollAllStatuses(), 800);
-                    }
-                },
-
-                getProcessLabel() {
-                    const statuses = Object.values(this.currentUploadJobs).map(j => j.status);
-                    if (statuses.length === 0) return 'Idle';
-                    if (statuses.includes('error')) return 'Error in pipeline';
-                    if (statuses.includes('uploading')) return 'Sending to Local AI...';
-                    if (statuses.includes('syncing')) return 'Syncing Filesystem...';
-                    if (statuses.includes('faces')) return 'Detecting Faces...';
-                    if (statuses.includes('vectors')) return 'Embedding CLIP Scenes...';
-                    if (statuses.includes('queued')) return 'Queued for processing...';
-                    return 'AI is working...';
-                },
-
-                get totalDoneCount() {
-                    return Object.values(this.currentUploadJobs).filter(job => job.status === 'done' || job.status === 'error').length;
-                },
-
-                get isTotalDone() {
-                    return this.totalDoneCount === Object.keys(this.currentUploadJobs).length;
-                },
-
-                resetUpload() {
-                    this.uploading = false;
-                    this.uploadStatus = 'idle';
-                    this.currentUploadJobs = {};
-                    this.lastUploadedFiles = null;
-                    this.uploadPreview = null;
-                },
-
-
-                async doAddMoment() {
-                    if (!this.newMomentLabel.trim()) return;
-                    await fetch('/api/moments/create', {
+                async saveName() {
+                    if (!this.newName) return;
+                    const res = await fetch('/api/rename', {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ label: this.newMomentLabel, photo_paths: this.selectedPhotos })
+                        body: JSON.stringify({ person_id: this.renamingPerson.id, new_name: this.newName })
                     });
-                    this.addMomentOpen = false;
-                    this.newMomentLabel = '';
-                    this.selectedPhotos = [];
-                    this.flash('Moment created');
-                    await this.refreshAll();
-                },
-
-                async doAddToMoment(momentId) {
-                    const paths = this.selectionMode ? this.selectedItems : [this.lbPhotos[this.lbIndex]?.file_path];
-                    for (const path of paths) {
-                        if (!path) continue;
-                        await fetch('/api/moments/add-photo', {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({ moment_id: momentId, photo_path: path })
-                        });
-                    }
-                    this.lbMoveShow = false;
-                    this.flash(paths.length > 1 ? 'Photos added' : 'Photo added');
-                    this.exitSelection();
-                    await this.refreshAll();
-                },
-
-                async openMoveModal() {
-                    this.lbAddPhotoPath = this.lbPhotos[this.lbIndex]?.file_path || null;
-                    this.customFolderName = '';
-                    // Load available folders from data/input
-                    try {
-                        const res = await fetch('/api/folders');
-                        const data = await res.json();
-                        this.availableFolders = data.folders || [];
-                    } catch(e) {
-                        this.availableFolders = [];
-                    }
-                    this.lbMoveShow = true;
-                    this.$nextTick(() => lucide.createIcons());
-                },
-
-                async doMovePhoto(target) {
-                    const path = this.lbAddPhotoPath || this.lbPhotos[this.lbIndex]?.file_path;
-                    if (!path) return;
-                    try {
-                        await fetch('/api/photos/move', {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({ file_path: path, target_folder: target })
-                        });
-                        this.lbMoveShow = false;
-                        this.flash('Photo moved');
-                        await this.refreshAll();
-                    } catch(e) {
-                        this.flash('Move failed', 'error');
+                    if (res.ok) {
+                        this.renamingPerson = null;
+                        this.newName = '';
+                        this.loadPeople();
+                        this.loadPhotos();
                     }
                 },
 
-                async doSearch() {
-                    if (!this.searchQuery.trim()) {
-                        this.isSearchActive = false;
-                        return;
-                    }
-                    try {
-                        const res = await fetch('/api/search?query=' + encodeURIComponent(this.searchQuery));
-                        const data = await res.json();
-                        this.searchResults = data.results || [];
-                        this.isSearchActive = true;
-                    } catch(e) {
-                        console.error('Search failed', e);
-                    }
-                    this.$nextTick(() => lucide.createIcons());
+                openAlbumCreator() {
+                    this.creatingAlbum = true;
+                    this.albumName = '';
                 },
 
-                clearSearch() {
+                async confirmCreateAlbum() {
+                    if (!this.albumName || this.selectedPhotos.length === 0) return;
+                    const res = await fetch('/api/albums', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            name: this.albumName,
+                            photo_paths: this.selectedPhotos
+                        })
+                    });
+                    if (res.ok) {
+                        this.creatingAlbum = false;
+                        this.cancelSelect();
+                        this.loadAlbums();
+                        this.view = 'albums';
+                    }
+                },
+
+                activeFilter: null,
+                filterByPerson(id) {
+                    this.activeFilter = { type: 'person', id };
+                    this.view = 'timeline';
+                    this.searchQuery = '';
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                },
+
+                clearFilters() {
+                    this.activeFilter = null;
                     this.searchQuery = '';
                     this.searchResults = [];
-                    this.isSearchActive = false;
                 },
 
-                openLightboxFromResults(idx) {
-                    this.lbFromPhotos(this.searchResults, idx);
-                },
-
-                openLightboxFromAll(filePath) {
-                    const idx = this.allPhotos.findIndex(p => p.file_path === filePath);
-                    if (idx >= 0) this.openLightbox(idx, this.allPhotos);
-                },
-
-                formatPhotoDate(p) {
-                    const cap = p.captured_at;
-                    if (!cap) return 'Unknown';
-                    try {
-                        const d = new Date(cap);
-                        return d.toLocaleDateString('de-DE', { day: 'numeric', month: 'short' });
-                    } catch { return ''; }
-                },
-
-                groupPhotosByDay() {
-                    const days = {};
-                    this.noDatePhotos = [];
-                    const pidNames = {};
-                    for (const photo of this.allPhotos) {
-                        const cap = photo.captured_at;
-                        if (!cap) { this.noDatePhotos.push(photo); continue; }
-                        try {
-                            const d = new Date(cap);
-                            const dayKey = cap.split('T')[0];
-                            const label = d.toLocaleDateString('de-DE', { day:'numeric', month:'long', year:'numeric' });
-                            if (!days[dayKey]) days[dayKey] = { key: dayKey, label, photos: [], people: new Set() };
-                            days[dayKey].photos.push(photo);
-                            for (const pid of (photo.person_ids || [])) {
-                                days[dayKey].people.add(pid);
-                                if (!pidNames[pid]) {
-                                    const p = this.people.find(x => x.id === pid);
-                                    pidNames[pid] = p ? p.display.replace('\u{1f914} ', '') : pid;
-                                }
-                            }
-                        } catch {}
-                    }
-                    const sorted = Object.values(days).sort((a, b) => b.key.localeCompare(a.key));
-                    this.dayGroups = sorted.map(d => {
-                        const names = Array.from(d.people).slice(0,4).map(pid => pidNames[pid]||'?').join(', ');
-                        return { ...d, peopleNames: names };
-                    });
-                },
-
-                computeSuggestions() {
-                    const dismissed = this.dismissedSuggestions || [];
-                    const suggestions = [];
-                    const momentPaths = new Set((this.moments||[]).flatMap(m => m.member_paths||[]));
-                    for (const day of this.dayGroups) {
-                        if (day.photos.length < 3) continue;
-                        const paths = new Set(day.photos.map(p => p.file_path));
-                        if (paths.intersection(momentPaths).size > 0) continue;
-                        const id = 'suggest-' + day.key;
-                        if (dismissed.includes(id)) continue;
-                        suggestions.push({ id, label: day.label, photo_count: day.photos.length, people_count: day.people.size, photos: day.photos.slice(0,4).map(p => p.file_path) });
-                    }
-                    this.suggestions = suggestions;
-                },
-
-                dismissSuggestion(id) {
-                    this.dismissedSuggestions = [...(this.dismissedSuggestions||[]), id];
-                    localStorage.setItem('dismissed_suggestions', JSON.stringify(this.dismissedSuggestions));
-                    this.suggestions = this.suggestions.filter(s => s.id !== id);
-                },
-
-                async createSuggestion(s) {
-                    await fetch('/api/moments/create', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({label:s.label, photo_paths:s.photos}) });
-                    this.dismissSuggestion(s.id);
-                    await this.refreshAll();
-                    this.flash('Moment created!');
-                },
-
-                filterByPerson(pid) {
-                    const person = this.people.find(p => p.id === pid);
-                    this.activePersonFilter = pid;
-                    this.activePersonDisplay = person ? person.display : pid;
-                    this.dayGroups = this.dayGroups.map(d => ({...d, photos: d.photos.filter(p => (p.person_ids||[]).includes(pid))}));
-                },
-
-                clearPersonFilter() {
-                    this.activePersonFilter = null;
-                    this.activePersonDisplay = '';
-                    this.groupPhotosByDay();
-                },
-
-                getPersonBg(pid) {
-                    const colors = ['rose','orange','amber','lime','emerald','cyan','blue','indigo','violet','pink'];
-                    let h = 0; for (let i=0; i<pid.length; i++) h = (h*31+pid.charCodeAt(i))&0xffffffff;
-                    return 'bg-' + colors[Math.abs(h)%colors.length] + '-500/30';
-                },
-
-                getBubbles(p) {
-                    return (p.assignments||[]).map(a => {
-                        const bbox = a.face_bbox||[0.5,0.5,0.2,0.2];
-                        const person = this.people.find(x => x.id === a.person_id);
-                        const name = person ? person.display.replace('\u{1f914} ', '') : '?';
-                        return { person_id: a.person_id, x: Math.max(0,(bbox[0]-bbox[2]/2)*100), y: Math.max(0,(bbox[1]-bbox[3]/2)*100), s: Math.min(30,Math.max(12,bbox[2]*100)), name, short: name.slice(0,3) };
-                    });
-                },
-
-
-                async lbSaveCaption() {
-                    if (this.lbPhotos[this.lbIndex]?.is_group) return;
-                    const photo = this.lbPhotos[this.lbIndex];
-                    if (!photo) return;
-                    await fetch('/api/photos/caption', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ file_path: photo.file_path, caption: this.lbCaption })
-                    });
-                    photo.caption = this.lbCaption;
-                    this.lbCaptionEdit = false;
-                    this.flash('Caption saved');
-                },
-
-                getLbPeople() {
-                    const photo = this.lbPhotos[this.lbIndex];
-                    if (!photo || !photo.person_ids) return [];
-                    // Return unique people only
-                    const uniqueIds = [...new Set(photo.person_ids)];
-                    return this.people.filter(p => uniqueIds.includes(p.id));
-                },
-
-                getLbFaceCrop(person) {
-                    const photo = this.lbPhotos[this.lbIndex];
-                    if (!photo || !person) return '';
-                    
-                    const asgn = (photo.assignments || []).find(a => a.person_id === person.id);
-                    if (asgn && asgn.bbox && asgn.bbox.length === 4 && photo.resolution) {
-                        const [x1, y1, x2, y2] = asgn.bbox;
-                        const [w, h] = photo.resolution;
-                        const fw = x2 - x1;
-                        const fh = y2 - y1;
-                        const cx = ((x1 + fw/2) / w * 100).toFixed(2);
-                        const cy = ((y1 + fh/2) / h * 100).toFixed(2);
-                        const filename = photo.file_path.replace('/root/memories-sorted/data/input/', '');
-                        return `/crop/${filename}?crop=${cx},${cy},${fw.toFixed(0)},${fh.toFixed(0)}&t=${Date.now()}`;
-                    }
-                    return person.avatarUrl;
-                },
-
-                handleInsightAction(action) {
-                    if (!action) return;
-
-                    switch (action.type) {
-                        case 'person':
-                            this.tab = 'people';
-                            const personToOpen = this.people.find(p => p.id === action.id);
-                            if (personToOpen) {
-                                this.openPerson(personToOpen);
-                            } else {
-                                this.flash('Person not found.', 'error');
-                            }
-                            break;
-                        case 'photo':
-                            const photoToOpen = this.allPhotos.find(p => p.file_path === action.path);
-                            if (photoToOpen) {
-                                const index = this.allPhotos.indexOf(photoToOpen);
-                                this.openLightbox(index, this.allPhotos);
-                            } else {
-                                this.flash('Photo not found.', 'error');
-                            }
-                            break;
-                        default:
-                            console.warn('Unknown insight action type:', action.type);
-                            break;
-                    }
-                },
-
-                renderInsightMessage(msg) {
-                    if (!msg) return '';
-                    // Pattern: [[type:id|Label]]
-                    return msg.replace(/\[\[(person|photo):([^|\]]+)\|([^\]]+)\]\]/g, (match, type, id, label) => {
-                        return `<span class="text-blue-400 underline cursor-pointer hover:text-blue-300 transition-colors" onclick="window.dispatchInsightAction('${type}', '${id}')">${label}</span>`;
-                    });
-                },
-
-                getLiftedUrl(pId) {
-                    return `/api/crop/premium/${pId}`;
-                },
-
-                confirmAction(msg, action) {
-                    this.confirmMessage = msg;
-                    this.confirmAction = action;
-                    this.confirmShow = true;
-                },
-
-                async doConfirm() {
-                    const action = this.confirmAction;
-                    this.confirmShow = false;
-                    if (action === 'bulkDelete') {
-                        for (const path of this.selectedItems) {
-                            await fetch('/api/photos/delete', {
-                                method: 'POST',
-                                headers: {'Content-Type': 'application/json'},
-                                body: JSON.stringify({ file_path: path })
-                            });
-                        }
-                        this.flash('Deleted ' + this.selectedItems.length + ' photos');
-                        this.exitSelection();
-                        await this.refreshAll();
-                    }
-                    else if (action === 'regenerateMoments') {
-                        await fetch('/api/moments/regenerate', { method: 'POST' });
-                        this.flash('Moments regenerated');
-                        await this.refreshAll();
-                    }
-                    else if (action.startsWith('deletePerson::')) {
-                        const id = action.split('::')[1];
-                        await fetch('/api/people/delete', {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({ person_id: id })
-                        });
-                        this.flash('Person deleted');
-                        await this.refreshAll();
-                    }
-                    else if (action.startsWith('deleteMoment::')) {
-                        const id = action.split('::')[1];
-                        await fetch('/api/moments/delete', {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({ moment_id: id })
-                        });
-                        this.flash('Moment deleted');
-                        await this.refreshAll();
-                    }
-                },
-
-                async doDeletePhoto() {
-                    const photo = this.lbPhotos[this.lbIndex];
-                    if (!photo) return;
-                    const path = photo.file_path;
-
-                    try {
-                        await fetch('/api/photos/delete', {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({ file_path: path })
-                        });
-                        
-                        // 1. Remove from Lightbox
-                        this.lbPhotos.splice(this.lbIndex, 1);
-                        if (this.lbIndex >= this.lbPhotos.length) this.lbIndex = Math.max(0, this.lbPhotos.length - 1);
-                        
-                        // 2. Remove from global catalogs immediately for reactivity
-                        this.allPhotos = this.allPhotos.filter(p => p.file_path !== path);
-                        if (this.mgOpen) this.mgPhotos = this.mgPhotos.filter(p => p.file_path !== path);
-                        if (this.pgOpen) this.pgPhotos = this.pgPhotos.filter(p => p.file_path !== path);
-
-                        this.lbDeleteShow = false;
-                        if (this.lbPhotos.length === 0) this.lbOpen = false;
-                        
-                        // Show undo snackbar
-                        const deletedPath = path;
-                        this.toast = { show: true, text: `Photo deleted — 60s to undo`, type: 'info', 
-                            showUndo: true, action: async () => {
-                                await fetch('/api/photo/undo', {
-                                    method: 'POST',
-                                    headers: {'Content-Type': 'application/json'},
-                                    body: JSON.stringify({ file_path: deletedPath })
-                                });
-                                await this.refreshAll();
-                                this.flash('Photo restored');
-                            }
-                        };
-                        
-                        // 3. Full background refresh to sync Moments/Counts
-                        await this.refreshAll();
-                    } catch(e) {
-                        this.flash('Delete failed', 'error');
-                    }
+                openLightbox(photo) {
+                    // Quick implementation or just console log for now
+                    console.log("Opening lightbox for:", photo.file_path);
                 }
             }
         }

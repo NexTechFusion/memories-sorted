@@ -10,6 +10,24 @@ from typing import List, Optional
 import os, json, shutil, time, uuid, asyncio, hashlib, datetime, io
 from PIL import Image
 
+# --- Translation Cache ---
+_TRANSLATION_CACHE = {}
+
+def translate_query(text: str) -> str:
+    """Translate non-ASCII queries (German) to English for CLIP."""
+    if text.isascii():
+        return text
+    if text in _TRANSLATION_CACHE:
+        return _TRANSLATION_CACHE[text]
+    try:
+        from deep_translator import GoogleTranslator
+        translated = GoogleTranslator(source='auto', target='en').translate(text)
+        _TRANSLATION_CACHE[text] = translated
+        return translated
+    except Exception as e:
+        print(f"[Translation] Failed: {e}")
+        return text
+
 # --- Core Engine Imports ---
 from sync import MemoriesSync
 from clip_engine import ClipSearchEngine
@@ -39,6 +57,16 @@ app = FastAPI(title="Memories AI")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # === Request Models ===
+
+class AlbumCreateRequest(BaseModel):
+    name: str
+    type: str = "manual"  # or "smart"
+    photo_paths: List[str] = []
+    query: Optional[str] = None
+
+class AlbumAddPhotosRequest(BaseModel):
+    photo_paths: List[str]
+
 class RenameRequest(BaseModel):
     person_id: str
     new_name: str
@@ -377,8 +405,11 @@ async def get_active_jobs():
 
 @app.get("/api/search")
 async def search_photos(query: str = Query(..., min_length=1), limit: int = Query(20, ge=1, le=200)):
-    """Semantic search using CLIP embeddings."""
-    results = clip_engine.search(query, top_k=limit)
+    """Semantic search using CLIP embeddings. Auto-translates German queries."""
+    search_query = translate_query(query)
+    if search_query != query:
+        print(f"[Search] Translating: '{query}' → '{search_query}'")
+    results = clip_engine.search(search_query, top_k=limit)
     # Build full photo objects with captured_at
     photos = []
     if not os.path.exists(INDEX_PATH):
@@ -423,7 +454,7 @@ async def get_suggestions():
     # In a real app we'd fetch existing moments to avoid suggesting them
     suggestions = []
     for day, photos in days.items():
-        if len(photos) >= 3:
+        if len(photos) >= 2:
             pids = set()
             for p in photos:
                 for a in p.get("assignments", []):
@@ -724,3 +755,56 @@ async def face_crop(path: str, crop: str = None):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8373)
+
+# --- Album Endpoints ---
+ALBUMS_PATH = os.path.join(DATA_DIR, "albums.json")
+
+def _load_albums():
+    if not os.path.exists(ALBUMS_PATH):
+        return []
+    with open(ALBUMS_PATH) as f:
+        return json.load(f)
+
+def _save_albums(albums):
+    with open(ALBUMS_PATH, "w") as f:
+        json.dump(albums, f, indent=2)
+
+@app.get("/api/albums")
+async def get_albums():
+    return _load_albums()
+
+@app.post("/api/albums")
+async def create_album(req: AlbumCreateRequest):
+    albums = _load_albums()
+    new_album = {
+        "id": str(uuid.uuid4()),
+        "name": req.name,
+        "type": req.type,
+        "photo_paths": req.photo_paths,
+        "query": req.query,
+        "created_at": datetime.datetime.now().isoformat()
+    }
+    albums.append(new_album)
+    _save_albums(albums)
+    return new_album
+
+@app.post("/api/albums/{album_id}/add")
+async def add_photos_to_album(album_id: str, req: AlbumAddPhotosRequest):
+    albums = _load_albums()
+    for album in albums:
+        if album["id"] == album_id:
+            existing = set(album.get("photo_paths", []))
+            album["photo_paths"] = list(existing | set(req.photo_paths))
+            _save_albums(albums)
+            return album
+    raise HTTPException(status_code=404, detail="Album not found")
+
+@app.delete("/api/albums/{album_id}")
+async def delete_album(album_id: str):
+    albums = _load_albums()
+    filtered = [a for a in albums if a["id"] != album_id]
+    if len(filtered) == len(albums):
+        raise HTTPException(status_code=404, detail="Album not found")
+    _save_albums(filtered)
+    return {"status": "ok"}
+
