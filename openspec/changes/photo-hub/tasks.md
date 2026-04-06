@@ -23,6 +23,22 @@
 - [x] 2.4 Smart albums (save search as dynamic)
 - [ ] 2.5 Album export → ZIP download
 
+## Phase 2.1 — UX Refinement & Album Fixes (CURRENT)
+
+- [ ] 2.1.1 Implement Longpress Selection (Remove Select/Add buttons)
+- [ ] 2.1.2 Fix Album Creation & Persistence
+- [ ] 2.1.3 Add Album Delete & Photo Add endpoints/UI
+- [ ] 2.1.4 Fix Unidentified People View logic
+- [ ] 2.1.5 Add Image Fallbacks for Albums and Empty States
+- [ ] 2.1.6 Fix Rename Modal "Discard" button
+
+## Phase 2.2 — Final UX Polish & File Ops (CURRENT)
+
+- [ ] 2.2.1 Multi-file Upload (with optional Album target)
+- [ ] 2.2.2 Lightbox Swiping & Navigation (Backdrop close, X button)
+- [ ] 2.2.3 Registered Face Deletion/Removal UI
+- [ ] 2.2.4 Fix Lightbox missing components
+
 ## Phase 3 — Ingestion Pipeline
 
 - [ ] 3.1 GDrive OAuth + incremental sync

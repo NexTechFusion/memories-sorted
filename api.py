@@ -159,6 +159,7 @@ async def shutdown_event():
         print(f"[CLIP] Could not save embeddings: {e}")
 
 @app.get("/api/crop/premium/{person_id}")
+@app.get("/api/crop/{person_id}")
 async def get_premium_crop(person_id: str):
     """Generates an aesthetic, head-and-shoulders portrait crop."""
     cache_path = os.path.join(PREMIUM_DIR, f"{person_id}.jpg")
@@ -752,18 +753,16 @@ async def face_crop(path: str, crop: str = None):
         return StreamingResponse(buf, media_type="image/jpeg")
     except: return FileResponse(full_path)
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8373)
-
 # --- Album Endpoints ---
 ALBUMS_PATH = os.path.join(DATA_DIR, "albums.json")
 
 def _load_albums():
     if not os.path.exists(ALBUMS_PATH):
         return []
-    with open(ALBUMS_PATH) as f:
-        return json.load(f)
+    try:
+        with open(ALBUMS_PATH) as f:
+            return json.load(f)
+    except: return []
 
 def _save_albums(albums):
     with open(ALBUMS_PATH, "w") as f:
@@ -777,10 +776,10 @@ async def get_albums():
 async def create_album(req: AlbumCreateRequest):
     albums = _load_albums()
     new_album = {
-        "id": str(uuid.uuid4()),
+        "id": str(uuid.uuid4())[:8],
         "name": req.name,
         "type": req.type,
-        "photo_paths": req.photo_paths,
+        "photo_paths": list(set(req.photo_paths or [])),
         "query": req.query,
         "created_at": datetime.datetime.now().isoformat()
     }
@@ -807,4 +806,8 @@ async def delete_album(album_id: str):
         raise HTTPException(status_code=404, detail="Album not found")
     _save_albums(filtered)
     return {"status": "ok"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8373)
 

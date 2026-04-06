@@ -10,12 +10,12 @@
       "/root/memories-sorted/data/input/1000036515.jpg"
     ],
     "count": 4,
-    "created_at": "2026-04-06T12:58:58.789713",
+    "created_at": "2026-04-06T17:10:03.162691",
     "timestamp": 1775383947
   },
   {
     "id": "MOMENT_000",
-    "label": "Afternoon with Bunu and others",
+    "label": "Afternoon with Dom and others",
     "cover_image": "/root/memories-sorted/data/input/1000027042.jpg",
     "member_paths": [
       "/root/memories-sorted/data/input/1000027042.jpg",
@@ -27,10 +27,12 @@
       "/root/memories-sorted/data/input/1000026985.jpg",
       "/root/memories-sorted/data/input/1000020053.jpg",
       "/root/memories-sorted/data/input/photo_2026-03-25_13-11-18.jpg",
-      "/root/memories-sorted/data/input/30edd332fb8c4d10824f93a1eb5d2d70.jpeg"
+      "/root/memories-sorted/data/input/30edd332fb8c4d10824f93a1eb5d2d70.jpeg",
+      "/root/memories-sorted/data/input/IMG-20260406-WA0007.jpg",
+      "/root/memories-sorted/data/input/Screenshot_20260406_153714_Chrome.jpg"
     ],
-    "count": 10,
-    "created_at": "2026-04-06T12:58:58.768212",
+    "count": 12,
+    "created_at": "2026-04-06T17:10:03.136391",
     "timestamp": 1775383865
   }
 ]
