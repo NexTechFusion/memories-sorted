@@ -8,7 +8,7 @@
   {
     "type": "favorite",
     "title": "Most Photographed",
-    "message": "Paul appears in 7 face detections.\n\nTop people: Paul: 7, Liam baby: 5, Dom: 2, Person 70505968: 2, Person CADECBA6: 2",
+    "message": "Paul appears in 7 face detections.\n\nTop people: Paul: 7, Person 7CEE7A83: 6, Liam baby: 5, Dom: 3, Person 432F470E: 3",
     "icon": "\ud83c\udfc6",
     "action": {
       "type": "person",
@@ -18,7 +18,7 @@
   {
     "type": "stat",
     "title": "Your World in Numbers",
-    "message": "18 unique faces. 19 photos captured.",
+    "message": "33 unique faces. 24 photos captured.",
     "icon": "\ud83c\udf0d"
   },
   {

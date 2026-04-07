@@ -81,6 +81,9 @@ class MomentDeleteRequest(BaseModel):
 class DeletePersonRequest(BaseModel):
     person_id: str
 
+class HidePersonRequest(BaseModel):
+    person_id: str
+
 class PhotoCaptionRequest(BaseModel):
     file_path: str
     caption: str
@@ -356,49 +359,36 @@ async def get_people():
     registry = data.get("person_registry", {})
     catalog = data.get("image_catalog", [])
     person_counts = {}
-    # Track unnamed persons for merging
-    unnamed_pids = []
-    named_people = []
     
     for photo in catalog:
         for asgn in photo.get("assignments", []):
             pid = asgn.get("person_id")
             if pid: person_counts[pid] = person_counts.get(pid, 0) + 1
     
+    people = []
     for pid, info in registry.items():
+        if info.get("hidden"): continue
         name = info.get("name")
-        if name and name.strip():
-            named_people.append({
-                "id": pid, 
-                "display": name, 
-                "count": person_counts.get(pid, 0),
-                "avatar": info.get("best_face_path"),
-                "face_bbox": info.get("best_face_bbox"),
-                "premium_crop": f"/api/crop/premium/{pid}"
-            })
-        else:
-            unnamed_pids.append(pid)
-    
-    # Merge all unnamed persons into single "Unidentified" group
-    if unnamed_pids:
-        total_unnamed = sum(person_counts.get(pid, 0) for pid in unnamed_pids) if unnamed_pids else 0
-        # Use first unnamed person's face as avatar
-        first_unnamed = unnamed_pids[0] if unnamed_pids else None
-        first_info = registry.get(first_unnamed, {}) if first_unnamed else {}
-        named_people.append({
-            "id": "UNIDENTIFIED",
-            "display": "🤔 Unidentified",
-            "count": total_unnamed,
-            "avatar": first_info.get("best_face_path"),
-            "face_bbox": first_info.get("best_face_bbox"),
-            "is_group": True,
-            "member_ids": unnamed_pids,
-            "premium_crop": None
+        count = person_counts.get(pid, 0)
+        
+        # STRANGER DEFENSE: Only show unidentified if they appear in 2+ photos
+        # Named people are ALWAYS shown.
+        is_named = bool(name and name.strip())
+        if not is_named and count < 2:
+            continue
+
+        people.append({
+            "id": pid, 
+            "display": name if is_named else None, 
+            "count": count,
+            "avatar": info.get("best_face_path"),
+            "face_bbox": info.get("best_face_bbox"),
+            "premium_crop": f"/api/crop/premium/{pid}"
         })
     
-    # Sort: named first (by count desc), then Unidentified at end always
-    named_people.sort(key=lambda x: (x.get("is_group", False), -x["count"]))
-    return named_people
+    # Sort: named first (by count desc), then unnamed by count desc
+    people.sort(key=lambda x: (bool(x["display"]), x["count"]), reverse=True)
+    return people
 
 @app.get("/api/upload/active-jobs")
 async def get_active_jobs():
@@ -493,49 +483,142 @@ async def get_folders():
 
 @app.post("/api/rename")
 async def rename_person(req: RenameRequest):
-    """Rename a person in the person_registry."""
+    """Rename a person or merge if name already exists."""
     if not os.path.exists(INDEX_PATH):
         raise HTTPException(status_code=404, detail="Index not found")
     with open(INDEX_PATH) as f:
         data = json.load(f)
+    
     registry = data.get("person_registry", {})
     if req.person_id not in registry:
         raise HTTPException(status_code=404, detail=f"Person {req.person_id} not found")
-    registry[req.person_id]["name"] = req.new_name
+
+    new_name_clean = req.new_name.strip()
+    target_id = None
+    
+    # Check if this name already exists in registry
+    for pid, pinfo in registry.items():
+        existing_name = pinfo.get("name")
+        if existing_name and existing_name.strip().lower() == new_name_clean.lower():
+            target_id = pid
+            break
+    
+    if target_id and target_id != req.person_id:
+        # MERGE LOGIC: Replace all instances of req.person_id with target_id in all photos
+        # Ensure we check both assignments (modern) and person_ids (legacy/cache)
+        catalog = data.get("image_catalog", [])
+        photos_legacy = data.get("photos", [])
+        
+        for photo in catalog:
+            for asgn in photo.get("assignments", []):
+                if asgn.get("person_id") == req.person_id:
+                    asgn["person_id"] = target_id
+        
+        for p in photos_legacy:
+            if "person_ids" in p:
+                p["person_ids"] = [target_id if pid == req.person_id else pid for pid in p["person_ids"]]
+                p["person_ids"] = list(set(p["person_ids"]))
+        
+        # Delete old registry entry
+        del registry[req.person_id]
+        final_id = target_id
+    else:
+        # Simple rename
+        registry[req.person_id]["name"] = new_name_clean
+        final_id = req.person_id
+
     with open(INDEX_PATH, 'w') as f:
         json.dump(data, f, indent=2)
-    # Also purge cached premium crop so it regenerates if needed
-    cache_path = os.path.join(PREMIUM_DIR, f"{req.person_id}.jpg")
-    if os.path.exists(cache_path):
-        os.remove(cache_path)
+    
+    # Purge caches
+    for pid in [req.person_id, target_id] if target_id else [req.person_id]:
+        cache_path = os.path.join(PREMIUM_DIR, f"{pid}.jpg")
+        if os.path.exists(cache_path):
+            os.remove(cache_path)
+            
     _refresh_insights()
     _refresh_moments()
-    return {"status": "ok", "person_id": req.person_id, "new_name": req.new_name}
+    return {"status": "ok", "person_id": final_id, "merged": bool(target_id)}
 
 @app.post("/api/person/delete")
 async def delete_person(req: DeletePersonRequest):
-    """Remove a person from the registry and unassign their faces."""
+    """Remove a person and add to blacklist to prevent re-discovery."""
+    if not os.path.exists(INDEX_PATH):
+        raise HTTPException(status_code=404, detail="Index not found")
+    with open(INDEX_PATH) as f:
+        data = json.load(f)
+    
+    registry = data.get("person_registry", {})
+    # Add to blacklist if it exists, otherwise create it
+    if "blacklist" not in data: data["blacklist"] = []
+    if req.person_id not in data["blacklist"]:
+        data["blacklist"].append(req.person_id)
+
+    if req.person_id in registry:
+        del registry[req.person_id]
+    
+    # Remove all assignments
+    for photo in data.get("image_catalog", []):
+        photo["assignments"] = [a for a in photo.get("assignments", []) if a.get("person_id") != req.person_id]
+        if "person_ids" in photo:
+            photo["person_ids"] = [pid for pid in photo["person_ids"] if pid != req.person_id]
+
+    with open(INDEX_PATH, 'w') as f:
+        json.dump(data, f, indent=2)
+    
+    cache_path = os.path.join(PREMIUM_DIR, f"{req.person_id}.jpg")
+    if os.path.exists(cache_path): os.remove(cache_path)
+    
+    _refresh_insights()
+    _refresh_moments()
+    return {"status": "ok", "person_id": req.person_id}
+
+@app.post("/api/person/hide")
+async def hide_person(req: HidePersonRequest):
+    """Mark a person as hidden/ignored from identity views."""
     if not os.path.exists(INDEX_PATH):
         raise HTTPException(status_code=404, detail="Index not found")
     with open(INDEX_PATH) as f:
         data = json.load(f)
     registry = data.get("person_registry", {})
-    if req.person_id not in registry:
-        raise HTTPException(status_code=404, detail=f"Person {req.person_id} not found")
-    # Remove from registry
-    del registry[req.person_id]
-    # Remove all assignments for this person
-    for photo in data.get("image_catalog", []):
-        photo["assignments"] = [a for a in photo.get("assignments", []) if a.get("person_id") != req.person_id]
-    with open(INDEX_PATH, 'w') as f:
-        json.dump(data, f, indent=2)
-    # Clean cached crop
-    cache_path = os.path.join(PREMIUM_DIR, f"{req.person_id}.jpg")
-    if os.path.exists(cache_path):
-        os.remove(cache_path)
-    _refresh_insights()
-    _refresh_moments()
-    return {"status": "ok", "person_id": req.person_id}
+    if req.person_id in registry:
+        registry[req.person_id]["hidden"] = True
+        with open(INDEX_PATH, 'w') as f:
+            json.dump(data, f, indent=2)
+        return {"status": "ok", "person_id": req.person_id}
+    raise HTTPException(status_code=404, detail="Person not found")
+
+import numpy as np
+
+def cosine_similarity(a, b):
+    if a is None or b is None: return 0.0
+    a = np.array(a)
+    b = np.array(b)
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+
+@app.get("/api/people/suggestions/{person_id}")
+async def get_merge_suggestions(person_id: str):
+    """Find existing named people who look like this unidentified person."""
+    if not os.path.exists(INDEX_PATH): return []
+    with open(INDEX_PATH) as f: data = json.load(f)
+    registry = data.get("person_registry", {})
+    
+    target = registry.get(person_id)
+    if not target or not target.get("embedding"): return []
+    
+    suggestions = []
+    for pid, info in registry.items():
+        if pid == person_id or not info.get("name") or info.get("hidden"): continue
+        sim = cosine_similarity(target["embedding"], info.get("embedding"))
+        if sim > 0.7:  # Confidence threshold
+            suggestions.append({
+                "id": pid,
+                "display": info["name"],
+                "confidence": round(float(sim) * 100, 1),
+                "premium_crop": f"/api/crop/premium/{pid}"
+            })
+    
+    return sorted(suggestions, key=lambda x: x["confidence"], reverse=True)[:3]
 
 @app.post("/api/moment/rename")
 async def rename_moment(req: MomentRenameRequest):

@@ -10,6 +10,7 @@ from PIL.ExifTags import TAGS, GPSTAGS
 from sklearn.metrics.pairwise import cosine_similarity
 
 from processor import PersonProcessor
+from quality_engine import QualityEngine
 from schemas import (
     MemoriesIndex, PersonID, FaceDetection, FaceAssignment, ImageFaces
 )
@@ -25,6 +26,7 @@ class MemoriesSync:
         self.index_path = os.path.join(base_dir, "index.json")
         self.clip_index_path = os.path.join(base_dir, "clip_vectors.npy")
         self.processor = PersonProcessor()
+        self.quality_engine = QualityEngine()
         self.index = self._load_index()
 
         os.makedirs(self.input_dir, exist_ok=True)
@@ -215,6 +217,8 @@ class MemoriesSync:
                 self._save_index()
 
         # Pass 2: Process new images
+        existing_hashes = {getattr(item, 'phash', None) for item in self.index.image_catalog if hasattr(item, 'phash')}
+        
         for filename in os.listdir(self.input_dir):
             if not filename.lower().endswith((".png", ".jpg", ".jpeg", ".heic", ".webp")):
                 continue
@@ -223,7 +227,14 @@ class MemoriesSync:
             if file_path in cataloged_paths:
                 continue
             
-            print(f"[Sync] Processing {filename}...")
+            # TRASH SHIELD: Check Quality & pHash
+            quality = self.quality_engine.analyze(file_path)
+            if quality["phash"] in existing_hashes:
+                print(f"  ! Blocked Duplicate (pHash): {filename}")
+                os.remove(file_path) # Kill it permanently
+                continue
+            
+            print(f"[Sync] Processing {filename} (Score: {quality['trust_score']})...")
             detected_faces = self.processor.process_image(file_path)
             
             import cv2
@@ -231,9 +242,22 @@ class MemoriesSync:
             h, w = img.shape[:2] if img is not None else [0, 0]
             
             captured_at = self._extract_exif_date(file_path)
-            image_entry = ImageFaces(file_path=file_path, resolution=[w, h], captured_at=captured_at)
+            image_entry = ImageFaces(
+                file_path=file_path, 
+                resolution=[w, h], 
+                captured_at=captured_at,
+                quality_score=quality["trust_score"],
+                phash=quality["phash"]
+            )
             
             for face in detected_faces:
+                # STRANGER DEFENSE: Check visual significance (Size)
+                # If face is less than 1.5% of the photo area, mark as background
+                fx1, fy1, fx2, fy2 = face['bbox']
+                face_area = abs(fx2-fx1) * abs(fy2-fy1)
+                img_area = w * h
+                is_background = (face_area / img_area) < 0.015 if img_area > 0 else False
+
                 fd = FaceDetection(
                     bbox=face['bbox'],
                     confidence=face['score'],
@@ -244,15 +268,22 @@ class MemoriesSync:
                 
                 person_id, conf = self._find_matching_person(face['embedding'])
                 
+                # Check blacklist
+                if person_id and person_id in self.index.get('blacklist', []):
+                    print(f"  ! Skipped blacklisted person: {person_id}")
+                    continue
+
                 if not person_id:
-                    # New person — initialize with this face's embedding, count=1
+                    # New person
                     person_id = f"PERSON_{uuid.uuid4().hex[:8].upper()}"
                     self.index.person_registry[person_id] = PersonID(
                         id=person_id,
                         embedding=face['embedding'],
-                        face_count=1
+                        face_count=1,
+                        hidden=is_background # Auto-hide if tiny
                     )
-                    print(f"  + New person registered: {person_id} (conf: 1.00)")
+                    log_msg = "Background" if is_background else "New"
+                    print(f"  + {log_msg} person registered: {person_id}")
                 else:
                     # Running average update — correct formula
                     pid_entry = self.index.person_registry[person_id]
