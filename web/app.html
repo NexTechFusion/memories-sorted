@@ -4,8 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Memories Hub</title>
-    <script src="https://cdn.tailwindcss.com?_v=2"></script>
+    <script src="https://cdn.tailwindcss.com?_v=20260408"></script>
     <script src="https://unpkg.com/alpinejs@3.x.x" defer></script>
+    <meta http-equiv="Cache-Control" content="no-cache">
     <style>
         [x-cloak] { display: none !important; }
         ::-webkit-scrollbar { display: none; }
@@ -27,7 +28,8 @@
 <body class="bg-black text-white selection:bg-blue-500/30 font-sans overflow-x-hidden" x-data="memories()" x-init="init()">
 
     <!-- PERSISTENT SYNC PILL -->
-    <div x-show="uploadingCount > 0" class="fixed top-0 left-0 right-0 z-[5000] p-4 pointer-events-none" x-cloak>
+    <div x-show="isSyncing" class="fixed top-0 left-0 right-0 z-[7000] p-3 bg-amber-500 text-black text-center text-xs font-black uppercase tracking-widest animate-pulse">AI Processing... <span x-text="syncProgress + '%'"></span></div>
+             <div x-show="uploadingCount > 0 && sieveResults.length === 0 && !isSyncing" class="fixed top-0 left-0 right-0 z-[5000] p-4 pointer-events-none" x-cloak>
          <div class="max-w-xs mx-auto bg-blue-600 rounded-3xl p-1 shadow-2xl pointer-events-auto flex items-center justify-between border border-white/20">
               <div class="h-10 px-4 flex items-center gap-3"><div class="w-2 h-2 rounded-full bg-white animate-pulse"></div><span class="text-[9px] font-black uppercase tracking-widest text-white/90" x-text="'Syncing ' + (uploadingCount - uploadSuccessCount)"></span></div>
               <div class="bg-black/20 px-3 py-2 rounded-2xl text-[9px] font-black text-white/60" x-text="uploadProgress + '%'"></div>
@@ -47,7 +49,7 @@
             </div>
             <!-- DASHBOARD DOCK (FAST FILTER) -->
             <div x-show="view === 'timeline'" class="mt-2 flex gap-3 overflow-x-auto hide-scroll pb-1 animate-fade">
-                 <template x-for="p in filteredPeople" :key="p.id">
+                 <template x-for="p in filteredPeople()" :key="p.id">
                      <button @click="filterByPerson(p.id, p.display)" class="flex-none p-0.5"><div class="w-10 h-10 rounded-full overflow-hidden border-2" :class="activeFilter?.id === p.id ? 'border-blue-500 shadow-lg' : 'border-white/5'"><img :src="'/cache/premium_crops/' + p.id + '.jpg'" class="w-full h-full object-cover"></div></button>
                  </template>
             </div>
@@ -58,7 +60,7 @@
             <div x-show="view === 'timeline'">
                 <div x-show="activeFilter" class="px-4 mt-3" x-cloak>
                     <div class="bg-blue-600/10 border border-blue-500/20 rounded-xl p-2.5 flex items-center justify-between shadow-lg">
-                        <div class="flex items-center gap-2"><span class="text-[8px] font-black text-blue-500 uppercase tracking-widest px-1.5 py-0.5 bg-blue-500/10 rounded" x-text="activeFilter.type"></span><h4 class="text-xs font-bold truncate max-w-[150px]" x-text="activeFilter.display"></h4></div>
+                        <div class="flex items-center gap-2"><span class="text-[8px] font-black text-blue-500 uppercase tracking-widest px-1.5 py-0.5 bg-blue-500/10 rounded" x-text="activeFilter?.type"></span><h4 class="text-xs font-bold truncate max-w-[150px]" x-text="activeFilter?.display"></h4></div>
                         <button @click="clearFilters()" class="text-[8px] font-black uppercase text-white/30 px-2 py-1">Clear</button>
                     </div>
                 </div>
@@ -68,7 +70,7 @@
                         <div class="grid grid-cols-3 gap-0.5 px-0.5 mt-1">
                             <template x-for="(ph, idx) in group.photos" :key="ph.file_path">
                                 <div class="relative aspect-square cursor-pointer active:scale-95 transition-all overflow-hidden" 
-                                    :class="{'hero-card': idx === 0 && !searchQuery && !activeFilter && group.photos.length > 5, 'border-2 border-blue-500 z-20': isSelected(ph.file_path)}" 
+                                    class="transition-all" :class="isSelected(ph.file_path) ? 'border-2 border-blue-500 z-20' : (idx === 0 && !searchQuery && !activeFilter && group.photos.length > 5 ? 'hero-card' : '')" 
                                     @pointerdown="handlePressStart(ph)" @pointerup="handlePressEnd()" @pointerleave="handlePressEnd()" 
                                     @click="selectMode ? toggleSelected(ph.file_path) : openLightbox(ph)">
                                     <img :src="'/images/' + ph.file_path.split('/').pop()" loading="lazy" class="w-full h-full object-cover">
@@ -87,20 +89,20 @@
                     <div>
                         <h2 class="text-2xl font-black tracking-tight">People</h2>
                         <p class="text-sm text-white/40 mt-1">
-                            <span x-text="filteredPeople.length"></span> named, 
-                            <span x-text="unnamedPeople.length" class="text-orange-400"></span> to identify
+                            <span x-text="filteredPeople().length"></span> named, 
+                            <span x-text="unnamedPeople().length" class="text-orange-400"></span> to identify
                         </p>
                     </div>
                 </div>
                 
                 <!-- Spotlight: Unnamed Heroes -->
-                <div x-show="unnamedPeople.length > 0 && !showUnnamedGrid" class="mb-10">
+                <div x-show="unnamedPeople().length > 0 && !showUnnamedGrid" class="mb-10">
                      <div class="flex items-center justify-between mb-4">
                          <p class="text-sm font-semibold text-orange-400">Needs Naming</p>
                          <button @click="showUnnamedGrid = true" class="text-xs text-white/40 hover:text-white transition-colors">View All →</button>
                      </div>
                      <div class="flex gap-4 overflow-x-auto hide-scroll pb-2 -mx-4 px-4">
-                         <template x-for="p in unnamedPeople.slice(0,8)" :key="p.id">
+                         <template x-for="p in unnamedPeople().slice(0,8)" :key="p.id">
                              <div class="flex-none group cursor-pointer" @click="startRename(p)">
                                  <div class="w-24 h-24 rounded-2xl overflow-hidden bg-white/5 border-2 border-orange-500/30 shadow-lg group-hover:border-orange-500 group-hover:scale-105 transition-all mb-2">
                                      <img :src="p.premium_crop" class="w-full h-full object-cover" @error="$el.src='https://placehold.co/200x200/18181b/ffffff?text=👤'">
@@ -122,13 +124,13 @@
                         class="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2"
                         :class="showUnnamedGrid ? 'bg-orange-500/20 text-orange-400 shadow-sm' : 'text-white/40 hover:text-white/60'">
                         Unidentified
-                        <span x-show="unnamedPeople.length > 0" class="px-1.5 py-0.5 bg-orange-500/20 rounded-full text-[10px]" x-text="unnamedPeople.length"></span>
+                        <span x-show="unnamedPeople().length > 0" class="px-1.5 py-0.5 bg-orange-500/20 rounded-full text-[10px]" x-text="unnamedPeople().length"></span>
                     </button>
                 </div>
 
                 <!-- People Grid -->
                 <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                    <template x-for="p in (showUnnamedGrid ? unnamedPeople : filteredPeople)" :key="p.id">
+                    <template x-for="p in (showUnnamedGrid ? unnamedPeople() : filteredPeople())" :key="p.id">
                         <div class="group">
                             <div class="relative aspect-square rounded-2xl overflow-hidden bg-white/5 border border-white/10 shadow-lg mb-3"
                                  :class="!p.display ? 'border-orange-500/20' : ''">
@@ -162,7 +164,7 @@
                 </div>
                 
                 <!-- Empty State -->
-                <div x-show="(showUnnamedGrid && unnamedPeople.length === 0) || (!showUnnamedGrid && filteredPeople.length === 0)" class="py-20 text-center">
+                <div x-show="(showUnnamedGrid && unnamedPeople().length === 0) || (!showUnnamedGrid && filteredPeople().length === 0)" class="py-20 text-center">
                     <div class="w-20 h-20 mx-auto mb-4 rounded-full bg-white/5 flex items-center justify-center">
                         <svg class="w-8 h-8 text-white/20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
@@ -186,21 +188,127 @@
             </div>
         </main>
 
-        <!-- PRE-FLIGHT SYNC WORKSPACE -->
-        <div x-show="preFlightFiles.length > 0" class="fixed inset-0 z-[4000] bg-black flex flex-col animate-fade" x-cloak>
-             <header class="p-8 flex justify-between items-center border-b border-white/10">
-                 <div><h2 class="text-3xl font-black uppercase leading-none" x-text="preFlightFiles.length + ' Pending'"></h2><p class="text-[9px] font-black text-blue-500 uppercase tracking-widest mt-2">Batch Ingest Review</p></div>
-                 <button @click="preFlightFiles = []" class="p-4 bg-white/5 rounded-full border border-white/10"><svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"></path></svg></button>
-             </header>
-             <div class="flex-grow grid grid-cols-4 gap-1 p-1 overflow-y-auto hide-scroll group bg-zinc-950">
-                 <template x-for="(file, idx) in preFlightFiles" :key="idx"><div class="relative aspect-square rounded-xl overflow-hidden shadow-inner border border-white/5"><img :src="URL.createObjectURL(file)" x-on:load="URL.revokeObjectURL($el.src)" class="w-full h-full object-cover opacity-60"><button @click="preFlightFiles.splice(idx,1)" class="absolute top-1 right-1 p-1 bg-red-600 rounded shadow-xl active:scale-75 transition-all"><svg class="w-3 h-3" fill="white" viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button></div></template>
-             </div>
-             <footer class="p-8 glass rounded-t-[48px] border-t border-white/10">
-                 <button @click="startBulkUpload()" class="w-full py-6 bg-white text-black rounded-[32px] text-xs font-black uppercase shadow-2xl active:scale-95 transition-all">Launch Batch Sync</button>
-             </footer>
+        <!-- RESUME SESSION MODAL -->
+        <div x-show="resumeSession" x-cloak class="fixed inset-0 z-[7000] bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center p-6">
+            <div class="text-center mb-8">
+                <div class="w-20 h-20 mx-auto mb-4 rounded-full bg-amber-500/20 flex items-center justify-center text-4xl">📸</div>
+                <h3 class="text-xl font-black text-white mb-2">Upload in Progress</h3>
+                <p class="text-sm text-white/50">You have <span x-text="resumeSession?.files?.length || 0"></span> photos waiting from a previous session</p>
+            </div>
+            <div class="flex flex-col gap-3 w-full max-w-xs">
+                <button @click="resumeFromSession()" class="w-full py-4 bg-white text-black rounded-2xl text-sm font-black uppercase tracking-wide shadow-lg">Continue Review</button>
+                <button @click="abandonSession()" class="w-full py-4 bg-white/10 text-white/60 rounded-2xl text-sm font-bold">Discard</button>
+            </div>
         </div>
 
-        <!-- ZEN DETAIL VIEW (RESTORED BEAUTY) -->
+        <!-- SYNC LOCK OVERLAY — shown while photos are being AI-processed -->
+        <div x-show="isSyncing" x-cloak class="fixed inset-0 z-[6500] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-6">
+            <div class="text-center mb-6">
+                <div class="w-16 h-16 mx-auto mb-4 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+                <h3 class="text-lg font-black text-white mb-1">AI Processing...</h3>
+                <p class="text-xs text-white/40">Photos are being analyzed. This may take a few minutes.</p>
+            </div>
+            <div class="w-full max-w-xs">
+                <div class="h-2 bg-white/10 rounded-full overflow-hidden mb-2">
+                    <div class="h-full bg-amber-500 transition-all duration-500" :style="`width: ${syncProgress}%`"></div>
+                </div>
+                <p class="text-center text-xs text-white/30" x-text="syncProgress + '% complete'"></p>
+            </div>
+            <p class="mt-6 text-[10px] text-white/20 text-center max-w-xs">Page is locked during processing.<br>You'll be notified when it's done.</p>
+        </div>
+
+        <!-- SIEVE — MOBILE-FIRST UPLOAD FILTER -->
+        <div x-show="sieveResults.length > 0" x-cloak
+             class="fixed inset-0 z-[6000] bg-black flex flex-col"
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="opacity-0"
+             x-transition:enter-end="opacity-100">
+
+             <!-- MOBILE HEADER -->
+             <div class="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-zinc-950">
+                 <div class="flex items-center gap-3">
+                     <div x-show="isSieving" class="flex items-center gap-2">
+                         <div class="w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+                         <span class="text-xs font-bold text-amber-400 uppercase tracking-wide">Processing...</span>
+                     </div>
+                     <div x-show="!isSieving">
+                         <span class="text-base font-black text-white" x-text="sieveResults.length + ' photos'"></span>
+                     </div>
+                 </div>
+                 <button @click="revokeAllURLs(); sieveResults = []; preFlightFiles = []"
+                         class="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 active:scale-90 transition-all">
+                     <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>
+                 </button>
+             </div>
+
+             <!-- HORIZONTAL SCROLL FILTER PILLS -->
+             <div class="flex gap-2 px-4 py-2.5 overflow-x-auto hide-scroll bg-zinc-950 border-b border-white/5">
+                 <button @click="sieveFilters.killDuplicates = !sieveFilters.killDuplicates"
+                         class="shrink-0 px-3 py-1.5 rounded-full border text-[10px] font-bold uppercase tracking-wide transition-all"
+                         :class="sieveFilters.killDuplicates ? 'bg-amber-500 text-black border-amber-500' : 'bg-white/5 text-white/40 border-white/10'">
+                     No Twins
+                 </button>
+                 <button @click="sieveFilters.killBlurry = !sieveFilters.killBlurry"
+                         class="shrink-0 px-3 py-1.5 rounded-full border text-[10px] font-bold uppercase tracking-wide transition-all"
+                         :class="sieveFilters.killBlurry ? 'bg-amber-500 text-black border-amber-500' : 'bg-white/5 text-white/40 border-white/10'">
+                     No Blur
+                 </button>
+                 <button @click="sieveFilters.hasFaces = !sieveFilters.hasFaces"
+                         class="shrink-0 px-3 py-1.5 rounded-full border text-[10px] font-bold uppercase tracking-wide transition-all"
+                         :class="sieveFilters.hasFaces ? 'bg-amber-500 text-black border-amber-500' : 'bg-white/5 text-white/40 border-white/10'">
+                     Has Faces
+                 </button>
+                 <button @click="sieveFilters.knownOnly = !sieveFilters.knownOnly"
+                         class="shrink-0 px-3 py-1.5 rounded-full border text-[10px] font-bold uppercase tracking-wide transition-all"
+                         :class="sieveFilters.knownOnly ? 'bg-amber-500 text-black border-amber-500' : 'bg-white/5 text-white/40 border-white/10'">
+                     Known Only
+                 </button>
+             </div>
+
+             <!-- GRID -->
+             <div class="flex-grow grid grid-cols-3 gap-0.5 p-0.5 overflow-y-auto bg-zinc-950">
+                 <template x-for="item in sieveResults" :key="item.temp_id">
+                     <div class="relative aspect-square rounded overflow-hidden border-2 transition-all"
+                          :class="isSieveItemRejected(item) ? 'border-red-600/60 opacity-25 grayscale' : 'border-white/5'">
+                         <img x-show="item._file" :src="item._file ? getPhotoURL(item._file) : ''" class="w-full h-full object-cover">
+                         <div x-show="!item._file" class="absolute inset-0 bg-zinc-800 animate-pulse"></div>
+                         <!-- Status dot -->
+                         <div class="absolute top-1.5 right-1.5 w-5 h-5 rounded-full border-2 flex items-center justify-center backdrop-blur-sm z-10"
+                              :class="isSieveItemRejected(item) ? 'bg-red-600 border-red-400' : 'bg-emerald-500/80 border-emerald-400'">
+                             <svg x-show="!isSieveItemRejected(item)" class="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                             <svg x-show="isSieveItemRejected(item)" class="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"></path></svg>
+                         </div>
+                         <!-- Quality badge -->
+                         <div class="absolute bottom-1 left-1.5">
+                             <span class="text-[8px] font-black px-1 py-0.5 rounded backdrop-blur-sm"
+                                   :class="item.quality.trust_score < 0.3 ? 'bg-red-600/80 text-white' : item.quality.trust_score < 0.6 ? 'bg-yellow-600/80 text-black' : 'bg-emerald-600/80 text-white'"
+                                   x-text="item.quality.trust_score < 0.3 ? 'BLUR' : item.quality.trust_score < 0.6 ? 'OK' : 'SHARP'"></span>
+                         </div>
+                         <!-- Duplicate badge -->
+                         <div x-show="item.is_duplicate" class="absolute bottom-1 right-1.5">
+                             <span class="text-[8px] font-black px-1 py-0.5 rounded bg-red-600 text-white">DUP</span>
+                         </div>
+                     </div>
+                 </template>
+             </div>
+
+             <!-- COMPACT FOOTER -->
+             <div class="px-4 py-3 bg-zinc-950 border-t border-white/10">
+                 <div class="flex items-center justify-between mb-2">
+                     <div class="flex flex-col">
+                         <span class="text-sm font-black text-white" x-text="confirmSieveCount + ' of ' + sieveResults.length + ' selected'"></span>
+                     </div>
+                     <button @click="revokeAllURLs(); sieveResults = []; preFlightFiles = []"
+                             class="text-[10px] font-bold uppercase text-white/30 tracking-wide">Cancel</button>
+                 </div>
+                 <button @click="confirmSieveSync()"
+                         :disabled="isSieving || confirmSieveCount === 0"
+                         class="w-full py-4 bg-white text-black rounded-2xl text-xs font-black uppercase tracking-wide disabled:opacity-30 active:scale-[0.98] transition-all shadow-lg">
+                     <span x-text="isSieving ? 'Saving...' : 'Upload ' + confirmSieveCount + ' Photos'"></span>
+                 </button>
+             </div>
+        </div>
+<!-- ZEN DETAIL VIEW (RESTORED BEAUTY) -->
         <div x-show="lightboxPhoto" class="fixed inset-0 z-[1000] bg-black flex flex-col items-center justify-center overflow-hidden animate-fade" x-cloak x-transition.opacity>
             <button @click="lightboxPhoto = null" class="absolute top-8 left-8 z-[1050] p-4 bg-white/5 rounded-full backdrop-blur-3xl border border-white/10 active:scale-90 shadow-2xl pointer-events-auto"><svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"></path></svg></button>
             
@@ -217,19 +325,19 @@
             <div x-show="hud" class="fixed bottom-0 left-0 right-0 z-[1100] p-6 glass rounded-t-[48px] animate-fade pointer-events-auto pb-10 border-t border-white/10">
                  <div class="flex flex-col gap-6 max-w-sm mx-auto">
                      <div class="flex justify-between items-center"><span class="text-[9px] font-black uppercase text-white/30" x-text="formatGroupDate(lightboxPhoto?.captured_at)"></span><div class="flex gap-6"><button @click="prevPhoto()" class="text-white/20 p-1"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M15 19l-7-7 7-7"></path></svg></button><button @click="nextPhoto()" class="text-white/20 p-1"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M9 5l7 7-7 7"></path></svg></button></div></div>
-                     <p x-show="lightboxPhoto?.caption" class="text-center text-[13px] font-bold text-white/90 italic tracking-tight leading-tight px-4" x-text="lightboxPhoto.caption"></p>
+                     <p x-show="lightboxPhoto?.caption" class="text-center text-[13px] font-bold text-white/90 italic tracking-tight leading-tight px-4" x-text="lightboxPhoto?.caption"></p>
                      <div class="flex justify-center gap-1.5 overflow-x-auto hide-scroll pb-2">
                          <template x-for="pId in (lightboxPhoto?.person_ids || [])">
                              <div @click.stop="lightboxPhoto = null; filterByPerson(pId, getPersonName(pId))" class="flex-none px-3 py-1.5 rounded-full bg-white/5 border border-white/10 flex items-center gap-2 active:scale-95 transition-all"><div class="w-5 h-5 rounded-full overflow-hidden border border-white/20"><img :src="'/cache/premium_crops/' + pId + '.jpg'" class="h-full w-full object-cover"></div><span class="text-[8px] font-black uppercase tracking-widest text-white/60" x-text="getPersonName(pId)"></span></div>
                          </template>
                      </div>
                      <div class="border-t border-white/5 pt-4 flex gap-1.5 overflow-x-auto hide-scroll px-1">
-                         <template x-for="a in albums" :key="a.id"><button @click="addToAlbum(a.id, lightboxPhoto.file_path)" class="flex-none px-4 py-2.5 rounded-xl border border-white/5 text-[8px] font-black uppercase transition-all" :class="a.photo_paths.includes(lightboxPhoto.file_path) ? 'active-album shadow-xl shadow-blue-500/40' : 'bg-white/5 text-white/20'"><span x-text="a.name"></span></button></template>
-                         <button @click="openAlbumCreatorFromSelection([lightboxPhoto.file_path])" class="flex-none px-4 py-2.5 rounded-xl border border-dashed border-white/10 text-[8px] font-black uppercase text-white/10">+ New</button>
+                         <template x-for="a in albums" :key="a.id"><button @click="lightboxPhoto && addToAlbum(a.id, lightboxPhoto.file_path)" class="flex-none px-4 py-2.5 rounded-xl border border-white/5 text-[8px] font-black uppercase transition-all" :class="isInAlbum(a) ? 'active-album shadow-xl shadow-blue-500/40' : 'bg-white/5 text-white/20'"><span x-text="a.name"></span></button></template>
+                         <button @click="openAlbumCreatorFromSelection([lightboxPhoto?.file_path])" class="flex-none px-4 py-2.5 rounded-xl border border-dashed border-white/10 text-[8px] font-black uppercase text-white/10">+ New</button>
                      </div>
                      <div class="flex gap-2.5 mt-1">
-                         <button @click="deletePhoto(lightboxPhoto.file_path)" class="flex-1 py-4 rounded-[24px] bg-red-600/10 text-red-500 text-[10px] font-black uppercase border border-red-500/20 active:scale-95 shadow-xl">Trash</button>
-                         <button @click="downloadPhoto(lightboxPhoto.file_path)" class="px-8 py-4 bg-white/5 border border-white/10 rounded-[28px] text-white/30 active:scale-95 shadow-lg"><svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg></button>
+                         <button @click="deletePhoto(lightboxPhoto?.file_path)" class="flex-1 py-4 rounded-[24px] bg-red-600/10 text-red-500 text-[10px] font-black uppercase border border-red-500/20 active:scale-95 shadow-xl">Trash</button>
+                         <button @click="downloadPhoto(lightboxPhoto?.file_path)" class="px-8 py-4 bg-white/5 border border-white/10 rounded-[28px] text-white/30 active:scale-95 shadow-lg"><svg class="w-4 h-4 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg></button>
                      </div>
                  </div>
             </div>
@@ -239,8 +347,8 @@
         <nav x-show="!selectMode && !lightboxPhoto" class="fixed bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-black/60 backdrop-blur-2xl border border-white/10 p-1.5 rounded-[28px] shadow-2xl z-50 transition-all">
             <button @click="view = 'timeline'; clearFilters(); window.scrollTo({top:0, behavior:'smooth'})" class="p-4 rounded-[22px] transition-all active:scale-90" :class="view === 'timeline' ? 'bg-white/20 text-white shadow-inner' : 'text-white/20'"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg></button>
             <button @click="view = 'albums'; window.scrollTo({top:0, behavior:'smooth'})" class="p-4 rounded-[22px] transition-all active:scale-90" :class="view === 'albums' ? 'bg-white/20 text-white shadow-inner' : 'text-white/20'"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg></button>
-            <button @click="$refs.bulkInput.click()" class="p-4 bg-white text-black rounded-[22px] transition-all active:scale-95 mx-1 shadow-[0_15px_30px_rgba(255,255,255,0.2)]"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 4v16m8-8H4"></path></svg></button>
-            <input type="file" x-ref="bulkInput" multiple class="hidden" @change="preFlightFiles = Array.from($event.target.files)">
+            <button @click="isSyncing || $refs.bulkInput.click()" class="p-4 rounded-[22px] transition-all active:scale-95 mx-1 shadow-[0_15px_30px_rgba(255,255,255,0.2)]" :class="isSyncing ? 'opacity-30 cursor-not-allowed' : 'bg-white text-black'"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 4v16m8-8H4"></path></svg></button>
+            <input type="file" x-ref="bulkInput" multiple class="hidden" @change="handleBulkInput">
             <button @click="view = 'people'; window.scrollTo({top:0, behavior:'smooth'})" class="p-4 rounded-[22px] transition-all active:scale-90" :class="view === 'people' ? 'bg-white/20 text-white shadow-inner' : 'text-white/20'"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg></button>
         </nav>
 
@@ -313,7 +421,159 @@
     <script>
         function memories() {
             return {
-                view: 'timeline', allPhotos: [], searchQuery: '', searchResults: [], peopleList: [], albums: [], activeFilter: null, selectMode: false, selectedPhotos: [], renamingPerson: null, newName: '', creatingAlbum: false, albumName: '', lightboxPhoto: null, hud: false, preFlightFiles: [], uploadingCount: 0, uploadSuccessCount: 0, uploadProgress: 0, showUnnamedGrid: false, suggestions: [], 
+                view: 'timeline', allPhotos: [], searchQuery: '', searchResults: [], peopleList: [], albums: [], activeFilter: null, selectMode: false, selectedPhotos: [], renamingPerson: null, newName: '', creatingAlbum: false, albumName: '', lightboxPhoto: null, hud: false, showUnnamedGrid: false, suggestions: [], uploadingCount: 0, uploadProgress: 0, uploadSuccessCount: 0, pressTimer: null, preFlightFiles: [], sieveResults: [], preFlightPhotos: {}, sieveFilters: { killDuplicates: true, killBlurry: false, knownOnly: false, hasFaces: false }, manualRejections: [], isSieving: false, isSyncing: false, syncProgress: 0, syncTotal: 0, resumeSession: null, sieveSessionId: null, isLoading: false,
+                get filteredSieveResults() { return this.sieveResults; },
+                get confirmSieveCount() { return this.sieveResults.filter(i => !this.isSieveItemRejected(i)).length; },
+                isSieveItemRejected(item) {
+                    if (this.manualRejections.includes(item.temp_id)) return true;
+                    if (this.sieveFilters.killDuplicates && item.is_duplicate) return true;
+                    if (this.sieveFilters.killBlurry && item.quality.trust_score < 0.3) return true;
+                    // FIX #11: Accept if ANY face is known (invert: reject only if NO known faces AND has strangers)
+                    if (this.sieveFilters.knownOnly && item.faces.length > 0 && item.faces.every(f => !f.name)) return true;
+                    // Has Faces filter: reject if no faces at all
+                    if (this.sieveFilters.hasFaces && item.faces.length === 0) return true;
+                    return false;
+                },
+                isSieveItemManualRejected(tid) { return this.manualRejections.includes(tid); },
+                toggleManualSieve(tid) {
+                    const i = this.manualRejections.indexOf(tid);
+                    if (i === -1) this.manualRejections.push(tid);
+                    else this.manualRejections.splice(i, 1);
+                },
+                getBlurLabel(score) {
+                    if (score >= 150) return '🟢 Sharp';
+                    if (score >= 60) return '🟡 Okay';
+                    return '🔴 Blurry';
+                },
+                revokeAllURLs() {
+                    Object.values(this.preFlightPhotos).forEach(f => {
+                        if (f._objectUrl) URL.revokeObjectURL(f._objectUrl);
+                    });
+                    this.preFlightPhotos = {};
+                },
+                getPhotoURL(file) {
+                    if (!file._objectUrl) file._objectUrl = URL.createObjectURL(file);
+                    return file._objectUrl;
+                },
+                async handleBulkInput(e) {
+                    const files = Array.from(e.target.files);
+                    if (!files.length) return;
+                    if (this.isSyncing) return; // Block while processing
+                    // Check for existing session
+                    const existing = localStorage.getItem('activeSession');
+                    if (existing) {
+                        const s = JSON.parse(existing);
+                        const r = await fetch(`/api/upload/sessions/${s.id}`);
+                        if (r.ok) {
+                            const data = await r.json();
+                            if (data.status !== 'done') {
+                                this.resumeSession = data;
+                                return;
+                            }
+                        }
+                        localStorage.removeItem('activeSession');
+                    }
+                    this.preFlightFiles = files;
+                    this.sieveResults = files.map((f, i) => ({ temp_id: `skel_${i}`, filename: f.name, quality: {trust_score: 0, blur_score: 0}, is_duplicate: false, faces: [], _file: f }));
+                    this.manualRejections = [];
+                    this.isSieving = true;
+                    const formData = new FormData();
+                    files.forEach(f => formData.append('files', f));
+                    try {
+                        const r = await fetch('/api/upload/scan', { method: 'POST', body: formData });
+                        if (!r.ok) throw new Error('Pre-scan failed');
+                        const d = await r.json();
+                        this.sieveSessionId = d.session_id;
+                        localStorage.setItem('activeSession', JSON.stringify({ id: d.session_id }));
+                        this.sieveResults = d.results.map((res, idx) => ({ ...res, _file: files[idx] || null }));
+                    } catch(err) {
+                        console.error('Pre-scan error:', err);
+                        this.sieveResults = [];
+                        this.preFlightFiles = [];
+                    } finally { this.isSieving = false; }
+                },
+                async confirmSieveSync() {
+                    const approvedIds = this.sieveResults.filter(i => !this.isSieveItemRejected(i)).map(i => i.temp_id);
+                    if (!approvedIds.length) return;
+                    const filename = this.sieveResults.find(i => approvedIds.includes(i.temp_id))?.filename;
+                    this.isSieving = true;
+                    try {
+                        const r = await fetch(`/api/upload/sessions/${this.sieveSessionId}/commit`, { 
+                            method: 'POST', 
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(approvedIds)
+                        });
+                        if (r.ok) {
+                            this.sieveResults = [];
+                            this.preFlightFiles = [];
+                            this.isSyncing = true;
+                            this.syncProgress = 0;
+                            this.syncTotal = approvedIds.length;
+                            // Refresh data until new photos appear
+                            for (let i = 0; i < 60; i++) {
+                                await new Promise(r => setTimeout(r, 3000));
+                                await Promise.all([this.loadPhotos(true), this.loadPeople(true), this.loadAlbums(true)]);
+                                this.syncProgress = Math.min(100, Math.round(((i + 1) / 60) * 100));
+                                if (this.allPhotos.length > 0) { break; }
+                            }
+                            this.isSyncing = false;
+                            localStorage.removeItem('activeSession');
+                            this.sieveSessionId = null;
+                            // Switch to timeline and scroll to the new photo
+                            this.view = 'timeline';
+                            this.$nextTick(() => {
+                                // Scroll to the newly uploaded photo by filename
+                                if (filename) {
+                                    const el = document.querySelector(`[data-filename*="${filename}"]`);
+                                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                }
+                                // Flash the newest photo
+                                const cards = document.querySelectorAll('.photo-card');
+                                if (cards.length) cards[cards.length - 1]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            });
+                        }
+                    } finally { this.isSieving = false; }
+                },
+                async loadPhotos(silent = false) { if (!silent) this.isLoading = true; const r = await fetch('/api/photos'); this.allPhotos = await r.json(); if (!silent) this.isLoading = false; },
+                async loadPeople(silent = false) { if (!silent) this.isLoading = true; const r = await fetch('/api/people'); this.peopleList = await r.json(); if (!silent) this.isLoading = false; },
+                async loadAlbums(silent = false) { if (!silent) this.isLoading = true; const r = await fetch('/api/albums'); this.albums = await r.json(); if (!silent) this.isLoading = false; },
+                async resumeFromSession() {
+                    const session = this.resumeSession;
+                    this.resumeSession = null;
+                    if (!session || !session.files) return;
+                    // Restore sieve state with server data (thumbnails will show as broken since local files are gone)
+                    this.sieveResults = session.files.map(f => ({ ...f, _file: null }));
+                    this.sieveSessionId = session.id;
+                    this.sieveFilters = { killDuplicates: true, killBlurry: false, knownOnly: false, hasFaces: false };
+                    this.manualRejections = [];
+                },
+                async checkSessionOnLoad() {
+                    const existing = localStorage.getItem('activeSession');
+                    if (!existing) return;
+                    try {
+                        const s = JSON.parse(existing);
+                        const r = await fetch(`/api/upload/sessions/${s.id}`);
+                        if (!r.ok) { localStorage.removeItem('activeSession'); return; }
+                        const data = await r.json();
+                        if (data.status === 'done' || data.status === 'abandoned') {
+                            localStorage.removeItem('activeSession');
+                        } else {
+                            // Auto-resume: restore sieve state
+                            this.sieveResults = data.files.map(f => ({ ...f, _file: null }));
+                            this.sieveSessionId = data.id;
+                            this.sieveFilters = { killDuplicates: true, killBlurry: false, knownOnly: false, hasFaces: false };
+                            this.manualRejections = [];
+                        }
+                    } catch(e) { localStorage.removeItem('activeSession'); }
+                },
+                async abandonSession() {
+                    if (!this.resumeSession) return;
+                    await fetch(`/api/upload/sessions/${this.resumeSession.id}/abandon`, { method: 'POST' });
+                    localStorage.removeItem('activeSession');
+                    this.resumeSession = null;
+                    this.preFlightFiles = [];
+                    this.sieveResults = [];
+                },
                 async hidePerson(id) {
                     if (!confirm('Hide this person from identity views?')) return;
                     await fetch('/api/person/hide', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ person_id:id }) });
@@ -324,11 +584,8 @@
                     await fetch('/api/person/delete', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ person_id:id }) });
                     this.refresh();
                 },
-                init() { this.loadPhotos(); this.loadPeople(); this.loadAlbums(); setInterval(() => { if (!this.selectMode && !this.lightboxPhoto && !this.preFlightFiles.length) this.refresh(); }, 20000); this.$watch('lightboxPhoto', (v) => { if(v) { this.hud = false; this.$nextTick(() => this.scrollToPhoto(v.file_path)); } }); },
+                async init() { this.loadPhotos(); this.loadPeople(); this.loadAlbums(); this.checkSessionOnLoad(); setInterval(() => { if (!this.selectMode && !this.lightboxPhoto && !this.preFlightFiles.length && !this.sieveResults.length && !this.isSyncing) this.refresh(); }, 20000); this.$watch('lightboxPhoto', (v) => { if(v) { this.hud = false; this.$nextTick(() => this.scrollToPhoto(v.file_path)); } }); },
                 refresh() { this.loadPhotos(); this.loadPeople(); this.loadAlbums(); },
-                async loadPhotos() { const r = await fetch('/api/photos'); this.allPhotos = await r.json(); },
-                async loadPeople() { const r = await fetch('/api/people'); this.peopleList = await r.json(); },
-                async loadAlbums() { const r = await fetch('/api/albums'); this.albums = await r.json(); },
                 async searchPhotos() { if (!this.searchQuery) return this.searchResults = []; const r = await fetch(`/api/search?q=${encodeURIComponent(this.searchQuery)}`); const d = await r.json(); this.searchResults = d.results; },
                 getPersonName(id) { return this.peopleList.find(p => p.id === id)?.display || 'Unnamed'; },
                 get flattenedTimeline() {
@@ -341,8 +598,8 @@
                     const g = {}; this.flattenedTimeline.forEach(p => { let dk = '📎 No Date'; if (p.captured_at && p.captured_at !== 'None') dk = p.captured_at.split('T')[0]; if (!g[dk]) g[dk] = []; g[dk].push(p); });
                     return Object.keys(g).sort((a,b)=>b.localeCompare(a)).map(d => ({date: d, photos: g[d]}));
                 },
-                get filteredPeople() { return this.peopleList.filter(p => p.display); },
-                get unnamedPeople() { return this.peopleList.filter(p => !p.display); },
+                filteredPeople() { return this.peopleList.filter(p => p.display); },
+                unnamedPeople() { return this.peopleList.filter(p => !p.display); },
                 get isExistingName() { return this.newName && this.peopleList.some(p => p.display?.toLowerCase() === this.newName.toLowerCase() && p.id !== this.renamingPerson?.id); },
                 formatGroupDate(iso) { if (!iso || iso === '📎 No Date') return 'Undated'; const d = new Date(iso); return isNaN(d) ? iso : d.toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric', year:'numeric' }); },
                 toggleSelectMode() { this.selectMode = !this.selectMode; if (!this.selectMode) this.selectedPhotos = []; },
@@ -364,13 +621,14 @@
                 },
                 async saveName() { if (!this.newName) return; const r = await fetch('/api/rename', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ person_id:this.renamingPerson.id, new_name:this.newName }) }); if (r.ok) { this.renamingPerson = null; this.refresh(); } },
                 openAlbumCreatorFromSelection(paths) { this.tempSelection = paths || this.selectedPhotos; this.creatingAlbum = true; this.albumName = ''; },
+                isInAlbum(a) { return !!(this.lightboxPhoto && a.photo_paths.includes(this.lightboxPhoto.file_path)); },
                 async addToAlbum(aid, photoPath) { await fetch(`/api/albums/${aid}/add`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ photo_paths:[photoPath] }) }); this.loadAlbums(); },
                 async deleteAlbum(id) { if (!confirm('Purge collection?')) return; await fetch(`/api/albums/${id}`, { method:'DELETE' }); this.loadAlbums(); },
                 openLightbox(ph) { if (this.selectMode) return; this.lightboxPhoto = ph; },
                 scrollToPhoto(path) { const el = document.getElementById('snap-' + btoa(path).replace(/=/g,'')); if (el) el.scrollIntoView({ behavior:'instant', block:'center', inline:'center' }); },
                 handleSnapScroll() { const container = this.$refs.snapRail; if(!container) return; const index = Math.round(container.scrollLeft / container.clientWidth); const newPhoto = this.flattenedTimeline[index]; if (newPhoto && newPhoto.file_path !== this.lightboxPhoto?.file_path) { this.lightboxPhoto = newPhoto; } },
-                nextPhoto() { const next = this.flattenedTimeline[this.flattenedTimeline.findIndex(p=>p.file_path===this.lightboxPhoto.file_path)+1]; if (next) this.scrollToPhoto(next.file_path); },
-                prevPhoto() { const prev = this.flattenedTimeline[this.flattenedTimeline.findIndex(p=>p.file_path===this.lightboxPhoto.file_path)-1]; if (prev) this.scrollToPhoto(prev.file_path); },
+                nextPhoto() { const next = this.flattenedTimeline[this.flattenedTimeline.findIndex(p=>p.file_path===this.lightboxPhoto?.file_path)+1]; if (next) this.scrollToPhoto(next.file_path); },
+                prevPhoto() { const prev = this.flattenedTimeline[this.flattenedTimeline.findIndex(p=>p.file_path===this.lightboxPhoto?.file_path)-1]; if (prev) this.scrollToPhoto(prev.file_path); },
                 async deletePhoto(p) { if (!confirm('Trash this?')) return; await fetch('/api/photo/delete', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({file_path: p}) }); this.lightboxPhoto = null; this.loadPhotos(); },
                 downloadPhoto(p) { window.open('/images/' + p.split('/').pop(), '_blank'); },
                 async startBulkUpload() {

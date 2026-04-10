@@ -31,6 +31,7 @@ class ImageFaces(BaseModel):
     detected_faces: List[FaceDetection] = Field(default_factory=list)
     assignments: List[FaceAssignment] = Field(default_factory=list)
     quality_score: Optional[float] = Field(None, description="NIMA aesthetic quality score (0-10)")
+    phash: Optional[str] = Field(None, description="Perceptual hash for deduplication")
     caption: Optional[str] = Field(None, description="BLIP auto-caption for this image")
     captured_at: Optional[str] = Field(None, description="Original photo capture date from EXIF")
     

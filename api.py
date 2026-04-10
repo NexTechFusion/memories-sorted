@@ -1,7 +1,7 @@
 """
 Memories Sorted AI — Phase 1.5 Intelligence Engine API
 """
-from fastapi import FastAPI, HTTPException, UploadFile, File, Query
+from fastapi import FastAPI, HTTPException, UploadFile, File, Query, Body
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
@@ -294,6 +294,207 @@ async def _bg_process_photo(file_path: str, job_id: str, context_type: str = Non
         print(f"[BG Error] {e}")
         UPLOAD_JOBS[job_id]["status"] = "error"
         _save_jobs()
+
+@app.post("/api/upload/pre-scan")
+async def pre_scan_upload(files: List[UploadFile] = File(...)):
+    """Fast-scan faces and quality before committing."""
+    # Use persistent staging dir instead of /tmp
+    staging_dir = os.path.join(BASE_DIR, "data/staging")
+    os.makedirs(staging_dir, exist_ok=True)
+
+    # Session-based upload system
+    session_id = session_id
+    if session_id and session_id not in _UPLOAD_SESSIONS:
+        session_id = None
+    
+    if not session_id:
+        session_id = f"sess_{uuid.uuid4().hex[:8]}"
+        _UPLOAD_SESSIONS[session_id] = {
+            "id": session_id,
+            "created_at": time.time(),
+            "files": [],
+            "status": "scanning"
+        }
+    
+    session = _UPLOAD_SESSIONS[session_id]
+    
+    if not os.path.exists(INDEX_PATH): return {"status": "error", "message": "Index missing"}
+    with open(INDEX_PATH) as f: 
+        data = json.load(f)
+    registry = data.get("person_registry", {})
+    blacklist = set(data.get("blacklist", []))
+    catalog = data.get("image_catalog", [])
+    existing_hashes = {i.get("phash") for i in catalog if i.get("phash")}
+    
+    sync = MemoriesSync()
+    for idx, file in enumerate(files):
+        raw_bytes = await file.read()
+        temp_id = f"tmp_{uuid.uuid4().hex[:8]}"
+        safe_name = "".join(c for c in file.filename if c.isalnum() or c in ('.', '-', '_'))
+        if not safe_name: safe_name = f"file_{idx}.jpg"
+        temp_path = os.path.join(staging_dir, f"{session_id}_{temp_id}_{safe_name}")
+        
+        with open(temp_path, "wb") as f: f.write(raw_bytes)
+            
+        quality = sync.quality_engine.analyze(temp_path)
+        phash = quality.get("phash") or ""
+        faces = sync.processor.process_image(temp_path)
+        
+        detected_pids = []
+        for face in faces:
+            pid, conf = sync._find_matching_person(face["embedding"])
+            if pid and pid not in blacklist:
+                detected_pids.append({
+                    "id": pid,
+                    "name": registry.get(pid, {}).get("name"),
+                    "is_blacklisted": pid in blacklist,
+                    "is_hidden": registry.get(pid, {}).get("hidden", False),
+                    "confidence": float(conf)
+                })
+        
+        file_entry = {
+            "temp_id": temp_id,
+            "filename": safe_name,
+            "quality": quality,
+            "is_duplicate": phash in existing_hashes,
+            "faces": detected_pids,
+            "temp_path": temp_path
+        }
+        temp_results.append(file_entry)
+        session["files"].append(file_entry)
+    
+    session["status"] = "scanned"
+    return {"results": temp_results, "session_id": session_id}
+
+# Upload sessions storage
+_UPLOAD_SESSIONS = {}
+
+@app.post("/api/upload/scan")
+async def pre_scan_upload(files: List[UploadFile] = File(...), session_id: Optional[str] = None):
+    """Scan files and associate with a session."""
+    if session_id and session_id not in _UPLOAD_SESSIONS:
+        session_id = None
+    if not session_id:
+        session_id = f"sess_{uuid.uuid4().hex[:8]}"
+        _UPLOAD_SESSIONS[session_id] = {
+            "id": session_id, "created_at": time.time(), "files": [], "status": "scanning"
+        }
+    session = _UPLOAD_SESSIONS[session_id]
+    staging_dir = os.path.join(BASE_DIR, "data/staging")
+    os.makedirs(staging_dir, exist_ok=True)
+    temp_results = []
+    if not os.path.exists(INDEX_PATH): return {"status": "error", "message": "Index missing"}
+    with open(INDEX_PATH) as f: data = json.load(f)
+    registry = data.get("person_registry", {})
+    blacklist = set(data.get("blacklist", []))
+    catalog = data.get("image_catalog", [])
+    existing_hashes = {i.get("phash") for i in catalog if i.get("phash")}
+    sync = MemoriesSync()
+    for idx, file in enumerate(files):
+        raw_bytes = await file.read()
+        temp_id = f"tmp_{uuid.uuid4().hex[:8]}"
+        safe_name = "".join(c for c in file.filename if c.isalnum() or c in ('.', '-', '_')) or f"file_{idx}.jpg"
+        temp_path = os.path.join(staging_dir, f"{session_id}_{temp_id}_{safe_name}")
+        with open(temp_path, "wb") as f: f.write(raw_bytes)
+        quality = sync.quality_engine.analyze(temp_path)
+        phash = quality.get("phash") or ""
+        faces = sync.processor.process_image(temp_path)
+        detected_pids = []
+        for face in faces:
+            pid, conf = sync._find_matching_person(face["embedding"])
+            if pid and pid not in blacklist:
+                detected_pids.append({"id": pid, "name": registry.get(pid, {}).get("name"), "is_blacklisted": pid in blacklist, "is_hidden": registry.get(pid, {}).get("hidden", False), "confidence": float(conf)})
+        file_entry = {"temp_id": temp_id, "filename": safe_name, "quality": quality, "is_duplicate": phash in existing_hashes, "faces": detected_pids, "temp_path": temp_path}
+        temp_results.append(file_entry)
+        session["files"].append(file_entry)
+    session["status"] = "scanned"
+    return {"results": temp_results, "session_id": session_id}
+
+@app.post("/api/upload/sessions/{session_id}/commit")
+async def commit_session(session_id: str, file_ids: List[str] = Body(...)):
+    """Move vetted files from staging to input directory."""
+    if session_id not in _UPLOAD_SESSIONS:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    session = _UPLOAD_SESSIONS[session_id]
+    session["status"] = "committing"
+    
+    sync = MemoriesSync()
+    approved_tids = set(file_ids)
+    count = 0
+    
+    for f in session["files"]:
+        if f["temp_id"] not in approved_tids:
+            if os.path.exists(f["temp_path"]):
+                os.remove(f["temp_path"])
+            continue
+        
+        safe_name = f["filename"]
+        dest_path = os.path.abspath(os.path.join(sync.input_dir, safe_name))
+        if not dest_path.startswith(os.path.abspath(sync.input_dir)):
+            continue
+        if os.path.exists(f["temp_path"]):
+            os.rename(f["temp_path"], dest_path)
+            count += 1
+            # Queue for immediate AI processing
+            job_id = f"job_{uuid.uuid4().hex[:8]}"
+            UPLOAD_JOBS[job_id] = {"status": "queued", "file_path": dest_path}
+            await UPLOAD_QUEUE.put({"job_id": job_id, "file_path": dest_path})
+    
+    session["status"] = "done"
+    _refresh_insights()
+    return {"status": "ok", "session_id": session_id, "ingested": count}
+
+@app.post("/api/upload/sessions/{session_id}/abandon")
+async def abandon_session(session_id: str):
+    """Delete all staging files and remove session."""
+    if session_id not in _UPLOAD_SESSIONS:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    session = _UPLOAD_SESSIONS[session_id]
+    for f in session.get("files", []):
+        if os.path.exists(f.get("temp_path", "")):
+            os.remove(f["temp_path"])
+    
+    del _UPLOAD_SESSIONS[session_id]
+    return {"status": "ok"}
+
+@app.get("/api/upload/sessions/{session_id}")
+async def get_session(session_id: str):
+    """Get session info and file list."""
+    if session_id not in _UPLOAD_SESSIONS:
+        raise HTTPException(status_code=404, detail="Session not found")
+    session = _UPLOAD_SESSIONS[session_id]
+    return {
+        "id": session["id"],
+        "status": session["status"],
+        "created_at": session["created_at"],
+        "files": [{"temp_id": f["temp_id"], "filename": f["filename"], "quality": f["quality"], 
+                   "is_duplicate": f["is_duplicate"], "faces": f["faces"]} for f in session["files"]]
+    }
+
+@app.get("/api/upload/sessions")
+async def list_sessions():
+    """List all active sessions (not done/abandoned)."""
+    active = {sid: s for sid, s in _UPLOAD_SESSIONS.items() if s["status"] not in ("done", "abandoned")}
+    return {"sessions": [{"id": s["id"], "status": s["status"], "created_at": s["created_at"], "file_count": len(s["files"])} for s in active.values()]}
+
+@app.post("/api/upload/cleanup")
+async def cleanup_stale():
+    """Delete staging files older than 4 hours."""
+    staging_dir = os.path.join(BASE_DIR, "data/staging")
+    cutoff = time.time() - (4 * 3600)
+    removed = 0
+    for fname in os.listdir(staging_dir):
+        fpath = os.path.join(staging_dir, fname)
+        if os.path.getmtime(fpath) < cutoff:
+            os.remove(fpath)
+            removed += 1
+    # Also clean old sessions
+    for sid in list(_UPLOAD_SESSIONS.keys()):
+        if _UPLOAD_SESSIONS[sid]["created_at"] < cutoff:
+            del _UPLOAD_SESSIONS[sid]
+    return {"removed": removed}
 
 @app.post("/api/upload")
 async def upload_photo(file: UploadFile = File(...), context_type: Optional[str] = Query(None), context_id: Optional[str] = Query(None)):
@@ -811,9 +1012,24 @@ async def get_insights():
     return []
 
 @app.get("/")
-async def root(): return FileResponse(os.path.join(BASE_DIR, "web/app.html"))
+async def root():
+    response = FileResponse(os.path.join(BASE_DIR, "web/app.html"))
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
-app.mount("/web", StaticFiles(directory=os.path.join(BASE_DIR, "web")), name="web")
+from fastapi.responses import HTMLResponse
+
+class NoCacheStaticFiles(StaticFiles):
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
+
+app.mount("/web", NoCacheStaticFiles(directory=os.path.join(BASE_DIR, "web")), name="web")
 app.mount("/images", StaticFiles(directory=INPUT_DIR), name="images")
 app.mount("/cache", StaticFiles(directory=CACHE_DIR), name="cache")
 
